@@ -168,4 +168,10 @@
 [06:15] DONE: All 34 new trace tests passing
 [06:15] DONE: All 145 existing tests still passing (0 regressions)
 [06:20] DONE: Ran scripts/run_traces.py --all-domains --mock — 16/18 probes traced successfully, output saved to results/traces/
-[06:20] NEXT: Residual stream tracing infrastructure complete. Ready for real model validation.
+[06:20] DONE: Residual stream tracing infrastructure complete. Ready for real model validation.
+
+## Documentation
+[06:30] DONE: Updated MORNING_SUMMARY.md — accurate state: 18 probes, 179 tests, all infrastructure
+[06:45] DONE: Created PROBE_REVIEW.md — human-readable summary of all 18 probes with examples, scoring, risks, expected scores
+[06:55] DONE: Created API_KEYS_NEEDED.md — exact setup instructions for all 4 API services with costs and minimum viable baseline
+[06:55] NEXT: All documentation complete.
