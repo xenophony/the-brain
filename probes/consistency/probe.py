@@ -79,45 +79,68 @@ DIRECT_TEMPLATE = (
 
 
 def _extract_final_answer(response: str) -> str:
-    """Extract final answer from potentially verbose CoT response."""
+    """Extract final answer from potentially verbose CoT response.
+
+    Strategy: work backwards from the end of the response.
+    The final answer is almost always in the last 1-2 sentences.
+    Intermediate calculations ("3 × 5 = 15") appear earlier and
+    should be ignored in favor of conclusion markers near the end.
+    """
     r = response.strip()
     r_lower = r.lower()
 
-    # Try explicit answer markers (check last occurrence, not first)
-    markers = [
-        "the answer is", "answer:", "final answer:", "therefore,",
-        "thus,", "so the answer is", "= ", "equals", "result is",
-        "the speed is", "the perimeter is", "the angle is",
-        "the probability is", "the price was", "the next number is",
-    ]
-    best_pos = -1
-    best_after = ""
-    for marker in markers:
-        pos = r_lower.rfind(marker)  # LAST occurrence, not first
-        if pos > best_pos:
-            best_pos = pos
-            after = r[pos + len(marker):].strip()
-            # Take until period, newline, or end
-            for sep in [".", "\n", ",", " ("]:
-                idx = after.find(sep)
-                if idx > 0:
-                    after = after[:idx]
-                    break
-            best_after = after.strip().rstrip(".")
+    if not r:
+        return ""
 
-    if best_after:
-        return best_after.lower()
-
-    # Try to find **bolded** answer
+    # Try to find **bolded** answer (strongest signal — models bold their final answer)
     bold = re.findall(r'\*\*(.+?)\*\*', r)
     if bold:
         return bold[-1].strip().lower()
 
-    # Fall back to last line that looks like an answer
+    # Split into sentences/lines and work from the end
+    # Last 2 sentences are most likely to contain the final answer
     lines = [l.strip() for l in r.split("\n") if l.strip()]
+    last_section = "\n".join(lines[-3:]) if len(lines) > 3 else r
+    last_lower = last_section.lower()
+
+    # Try explicit conclusion markers in the last section only
+    conclusion_markers = [
+        "the answer is", "final answer:", "therefore,", "thus,",
+        "so the answer is", "so,", "result is", "equals",
+        "the speed is", "the perimeter is", "the angle is",
+        "the probability is", "the fraction is", "the price was",
+        "the next number is", "the day will be", "there are",
+        "we cannot conclude", "we can conclude",
+    ]
+    # Check if the last line starts with a direct answer word
+    last_line_lower = lines[-1].strip().lower() if lines else ""
+    first_word_last = last_line_lower.split(",")[0].split()[0].rstrip(".,") if last_line_lower else ""
+    if first_word_last in ("no", "yes", "friday", "saturday", "sunday", "monday",
+                            "tuesday", "wednesday", "thursday"):
+        return first_word_last
+    best_pos = -1
+    best_after = ""
+    for marker in conclusion_markers:
+        pos = last_lower.rfind(marker)
+        if pos > best_pos:
+            best_pos = pos
+            after = last_section[pos + len(marker):].strip()
+            # Take until period, newline, comma-space, or parenthetical
+            for sep in [".\n", ".\r", "\n", ", ", " ("]:
+                idx = after.find(sep)
+                if idx > 0:
+                    after = after[:idx]
+                    break
+            after = after.strip().rstrip(".").rstrip(",")
+            if after:
+                best_after = after
+
+    if best_after:
+        return best_after.lower()
+
+    # Fall back: last short line is likely the answer
     for line in reversed(lines):
         line_clean = line.strip().rstrip(".").lower()
-        # Short lines at the end are likely answers
         if len(line_clean) < 30:
             return line_clean
 

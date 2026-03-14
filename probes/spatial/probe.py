@@ -351,7 +351,7 @@ class SpatialProbe(BaseProbe):
             for board, _ship_cells, _placements in boards:
                 ascii_board = board_to_ascii(board)
                 prompt = PROMPT_TEMPLATE.format(board_ascii=ascii_board)
-                response = model.generate_short(prompt, max_new_tokens=5, temperature=0.0)
+                response = model.generate_short(prompt, max_new_tokens=10, temperature=0.0)
                 score = score_response(response, board)
                 scores.append(score)
                 if item_results is not None:

@@ -261,3 +261,10 @@
 [11:00] DONE: Analyzed EQ qwen-30b — 12/16 empty responses from content filtering, not extraction bug
 [11:00] DONE: Created TRACE_ANALYSIS.md with full findings and fix recommendations
 [11:00] NEXT: Apply 3 remaining fixes (spatial tokens, code tokens, consistency extraction)
+
+## Final Extraction Fixes
+[11:30] DONE: FIX 1 — spatial max_new_tokens 5 → 10 (Claude reasoning preamble no longer truncated)
+[11:30] DONE: FIX 2 — code max_new_tokens 400 → 500 (complex DP solutions no longer truncated)
+[11:30] DONE: FIX 3 — consistency extraction: last-line-first-word check for direct answers (no/yes/friday), bold text priority, last-section-only marker search avoids intermediate calc numbers
+[11:30] DONE: Added EQ qwen-30b content filtering finding to RESEARCH.md
+[11:30] DONE: All 192 tests passing

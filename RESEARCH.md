@@ -110,3 +110,17 @@ computation.
 - Efficient inference with dynamic layer paths
 - A/B testing framework
 - Monitoring and fallback to standard path
+
+## Baseline Calibration Findings
+
+### EQ Probe: Content Filtering on Qwen-30B
+Qwen-30B via OpenRouter returns empty responses on 12/16 EQ scenarios due to
+content filtering on emotional intensity questions. When it does respond, average
+score is 0.56 — reasonable calibration. This is a genuine model behavior finding,
+not a probe bug.
+
+**Implication for circuit mapping:** EQ probe results on Qwen-30B will be sparse.
+The content filtering behavior itself is scientifically interesting — it indicates
+aggressive safety filtering in the emotional processing pathway. If specific (i,j)
+configs bypass this filtering (producing non-empty responses), those configs likely
+modify the safety filter circuit. This is a safety-relevant finding worth documenting.
