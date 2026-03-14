@@ -143,7 +143,7 @@ The ball reflects off top and bottom walls.
 The paddle spans center_y \u00b1 3.
 
 Should the paddle move up, down, or stay?
-Answer with only: up, down, or stay"""
+You MUST respond with exactly one word: up, down, or stay. Nothing else."""
 
 
 def score_pong_simple(response: str, expected: str) -> float:
@@ -172,7 +172,7 @@ class SpatialPongSimpleProbe(BaseProbe):
                 ball_dx=item["ball_dx"], ball_dy=item["ball_dy"],
                 paddle_x=PADDLE_X, paddle_cy=item["paddle_cy"],
                 steps=item["steps"])
-            response = model.generate_short(prompt, max_new_tokens=10, temperature=0.0)
+            response = model.generate_short(prompt, max_new_tokens=20, temperature=0.0)
             score = score_pong_simple(response, item["answer"])
             easy_scores.append(score)
             if item_results is not None:
@@ -189,7 +189,7 @@ class SpatialPongSimpleProbe(BaseProbe):
                 ball_dx=item["ball_dx"], ball_dy=item["ball_dy"],
                 paddle_x=PADDLE_X, paddle_cy=item["paddle_cy"],
                 steps=item["steps"])
-            response = model.generate_short(prompt, max_new_tokens=10, temperature=0.0)
+            response = model.generate_short(prompt, max_new_tokens=20, temperature=0.0)
             score = score_pong_simple(response, item["answer"])
             hard_scores.append(score)
             if item_results is not None:
