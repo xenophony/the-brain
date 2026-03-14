@@ -285,3 +285,10 @@
 [12:00] DONE: MockAdapter pathfinding support via BFS on prompt grid
 [12:00] DONE: 10 new pathfinding tests, 201 total passing, 14 deselected
 [12:00] DONE: Dry run shows all 5 models OK, 19 probes, $0.33 estimated
+
+## Scoring Investigation + Fix
+[12:30] DONE: Investigated spatial_pathfinding scoring — NOT a bug. Models genuinely bad at pathfinding (llama-8b answers "4" for everything). Scoring is correct.
+[12:30] DONE: Investigated consistency extraction — "there are" marker matched "There are 60 minutes in an hour" from truncated CoT working. Two fixes:
+[12:30] DONE: Removed "there are" from conclusion markers (too generic, matches intermediate facts)
+[12:30] DONE: Increased consistency max_new_tokens from 300 to 500 (llama-70b was truncated before reaching conclusion)
+[12:30] DONE: All 201 tests passing

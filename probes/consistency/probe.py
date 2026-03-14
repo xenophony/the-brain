@@ -109,7 +109,7 @@ def _extract_final_answer(response: str) -> str:
         "so the answer is", "so,", "result is", "equals",
         "the speed is", "the perimeter is", "the angle is",
         "the probability is", "the fraction is", "the price was",
-        "the next number is", "the day will be", "there are",
+        "the next number is", "the day will be",
         "we cannot conclude", "we can conclude",
     ]
     # Check if the last line starts with a direct answer word
@@ -218,7 +218,7 @@ class ConsistencyProbe(BaseProbe):
         for scenario in SCENARIOS:
             # Phase 1: reasoning
             r_prompt = REASONING_TEMPLATE.format(problem=scenario["problem"])
-            reasoning = model.generate_short(r_prompt, max_new_tokens=300, temperature=0.0)
+            reasoning = model.generate_short(r_prompt, max_new_tokens=500, temperature=0.0)
             reasoning_answer = _extract_final_answer(reasoning)
 
             # Phase 2: direct answer (fresh prompt)
