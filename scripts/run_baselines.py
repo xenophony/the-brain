@@ -66,7 +66,7 @@ RESPONSES_FILE = OUTPUT_DIR / "baseline_responses.json"
 
 # Parallelism config
 MAX_PARALLEL_PROBES = 6  # max concurrent probes per model
-PROBE_TIMEOUT_SECONDS = 180  # 3 minutes max per probe
+PROBE_TIMEOUT_SECONDS = 300  # 5 minutes max per probe (thinking models need more time)
 # Note: daemon threads are abandoned on timeout but underlying sockets may
 # keep the process alive. Use os._exit() in extreme cases if needed.
 

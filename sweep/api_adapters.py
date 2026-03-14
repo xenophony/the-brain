@@ -136,6 +136,17 @@ class BaseAPIAdapter(ABC):
     def generate_short(self, prompt: str, max_new_tokens: int = 20, temperature: float = 0.0) -> str:
         ...
 
+    def _get_max_tokens(self, base_tokens: int) -> int:
+        """Scale max_tokens for thinking models that consume tokens on internal reasoning."""
+        model = getattr(self, "model", "") or ""
+        is_thinking = any(m in model.lower() for m in [
+            "gpt-5", "o1", "o3", "gemini", "claude-3-7",
+            "deepseek-r1", "qwq",
+        ])
+        if is_thinking:
+            return max(base_tokens * 10, 2048)
+        return base_tokens
+
     def get_logprobs(self, prompt: str, target_tokens=None) -> dict:  # noqa: ARG002
         """Most API providers don't expose logprobs; fall back to empty dict."""
         return {}
@@ -171,11 +182,12 @@ class ClaudeAdapter(BaseAPIAdapter):
         t0 = time.perf_counter()
         error_msg = None
         response_text = ""
+        actual_max = self._get_max_tokens(max_new_tokens)
         try:
             def _call():
                 return self._client.messages.create(
                     model=self.model,
-                    max_tokens=max_new_tokens,
+                    max_tokens=actual_max,
                     temperature=temperature,
                     messages=[{"role": "user", "content": prompt}],
                 )
@@ -233,13 +245,11 @@ class GeminiAdapter(BaseAPIAdapter):
         t0 = time.perf_counter()
         error_msg = None
         response_text = ""
+        actual_max = self._get_max_tokens(max_new_tokens)
         try:
-            # Gemini 2.5+ uses thinking tokens that count against max_output_tokens
-            effective_max = max(max_new_tokens * 8, 1024)
-
             def _call():
                 generation_config = self._genai.types.GenerationConfig(
-                    max_output_tokens=effective_max,
+                    max_output_tokens=actual_max,
                     temperature=temperature,
                 )
                 # Disable safety filters — our probes contain benign academic content
@@ -303,12 +313,13 @@ class GroqAdapter(BaseAPIAdapter):
         t0 = time.perf_counter()
         error_msg = None
         response_text = ""
+        actual_max = self._get_max_tokens(max_new_tokens)
         try:
             def _call():
                 return self._client.chat.completions.create(
                     model=self.model,
                     messages=[{"role": "user", "content": prompt}],
-                    max_tokens=max_new_tokens,
+                    max_tokens=actual_max,
                     temperature=temperature,
                 )
             resp = _retry_with_backoff(_call, timeout_seconds=self.request_timeout)
@@ -358,12 +369,13 @@ class TogetherAdapter(BaseAPIAdapter):
         t0 = time.perf_counter()
         error_msg = None
         response_text = ""
+        actual_max = self._get_max_tokens(max_new_tokens)
         try:
             def _call():
                 return self._client.chat.completions.create(
                     model=self.model,
                     messages=[{"role": "user", "content": prompt}],
-                    max_tokens=max_new_tokens,
+                    max_tokens=actual_max,
                     temperature=temperature,
                 )
             resp = _retry_with_backoff(_call, timeout_seconds=self.request_timeout)
@@ -420,20 +432,13 @@ class OpenRouterAdapter(BaseAPIAdapter):
         t0 = time.perf_counter()
         error_msg = None
         response_text = ""
+        actual_max = self._get_max_tokens(max_new_tokens)
         try:
-            # Thinking/reasoning models use tokens for internal reasoning before
-            # producing output. Increase max_tokens to give headroom.
-            effective_max = max_new_tokens
-            if "gemini" in self.model.lower():
-                effective_max = max(max_new_tokens * 8, 1024)
-            elif "gpt-5" in self.model.lower() or "o1" in self.model.lower() or "o3" in self.model.lower():
-                effective_max = max(max_new_tokens * 4, 512)
-
             def _call():
                 return self.client.chat.completions.create(
                     model=self.model,
                     messages=[{"role": "user", "content": prompt}],
-                    max_tokens=effective_max,
+                    max_tokens=actual_max,
                     temperature=temperature,
                 )
             resp = _retry_with_backoff(_call, timeout_seconds=self.request_timeout)

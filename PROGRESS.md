@@ -316,3 +316,10 @@
 [14:00] DONE: 8x token multiplier confirmed in both GeminiAdapter and OpenRouterAdapter
 [14:00] DONE: Dry run shows all 5 models OK, $0.36 estimated
 [14:00] DONE: All 201 tests passing
+
+## Frontier Model Token Budget Fix
+[15:00] DONE: Added BaseAPIAdapter._get_max_tokens() — 10x scaling (min 2048) for thinking models (gpt-5, o1, o3, gemini, deepseek-r1, qwq)
+[15:00] DONE: Applied to all 5 adapters: Claude, Gemini, Groq, Together, OpenRouter
+[15:00] DONE: Removed inline scaling from OpenRouter and Gemini adapters (centralized)
+[15:00] DONE: Increased probe timeout from 180s to 300s for thinking model headroom
+[15:00] DONE: All 201 tests passing
