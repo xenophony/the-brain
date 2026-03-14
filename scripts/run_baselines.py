@@ -41,16 +41,16 @@ from sweep.api_adapters import get_adapter, available_providers, _ENV_KEYS
 MODEL_REGISTRY = {
     "llama-8b": ("openrouter", "meta-llama/llama-3.1-8b-instruct"),
     "llama-70b": ("openrouter", "meta-llama/llama-3.3-70b-instruct"),
-    "qwen-30b": ("openrouter", "qwen/qwen-2.5-32b-instruct"),
+    "qwen-30b": ("openrouter", "qwen/qwen3-32b"),
     "claude-sonnet": ("openrouter", "anthropic/claude-sonnet-4"),
-    "gemini-3-pro": ("openrouter", "google/gemini-2.5-pro-preview-05-06"),
+    "gemini-3-pro": ("openrouter", "google/gemini-2.5-pro"),
 }
 
 FALLBACK_REGISTRY = {
     "llama-8b": ("groq", "llama-3.1-8b-instant"),
     "llama-70b": ("groq", "llama-3.3-70b-versatile"),
     "claude-sonnet": ("claude", "claude-sonnet-4-20250514"),
-    "gemini-3-pro": ("gemini", "gemini-2.5-pro-preview-05-06"),
+    "gemini-3-pro": ("gemini", "gemini-2.5-pro"),
 }
 
 ALL_PROBES = [

@@ -211,7 +211,7 @@ class GeminiAdapter(BaseAPIAdapter):
                     generation_config=generation_config,
                 )
             resp = _retry_with_backoff(_call)
-            response_text = resp.text if resp.text else ""
+            response_text = (resp.text or "") if hasattr(resp, 'text') else ""
         except Exception as exc:
             error_msg = str(exc)
             raise
@@ -266,7 +266,7 @@ class GroqAdapter(BaseAPIAdapter):
                     temperature=temperature,
                 )
             resp = _retry_with_backoff(_call)
-            response_text = resp.choices[0].message.content if resp.choices else ""
+            response_text = (resp.choices[0].message.content or "") if resp.choices else ""
         except Exception as exc:
             error_msg = str(exc)
             raise
@@ -319,7 +319,7 @@ class TogetherAdapter(BaseAPIAdapter):
                     temperature=temperature,
                 )
             resp = _retry_with_backoff(_call)
-            response_text = resp.choices[0].message.content if resp.choices else ""
+            response_text = (resp.choices[0].message.content or "") if resp.choices else ""
         except Exception as exc:
             error_msg = str(exc)
             raise
@@ -379,7 +379,7 @@ class OpenRouterAdapter(BaseAPIAdapter):
                     temperature=temperature,
                 )
             resp = _retry_with_backoff(_call)
-            response_text = resp.choices[0].message.content if resp.choices else ""
+            response_text = (resp.choices[0].message.content or "") if resp.choices else ""
         except Exception as exc:
             error_msg = str(exc)
             raise
