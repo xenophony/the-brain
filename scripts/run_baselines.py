@@ -3,10 +3,11 @@
 Run all probes against API models to collect baseline scores.
 
 No (i,j) sweep — just single baseline score per model per probe.
+Probes run in parallel per model for ~5-8x speedup.
 
 Usage:
   python scripts/run_baselines.py --models all
-  python scripts/run_baselines.py --models claude-sonnet gemini-2.5-pro
+  python scripts/run_baselines.py --models claude-sonnet llama-8b
   python scripts/run_baselines.py --probes math spatial eq
   python scripts/run_baselines.py --dry-run
 """
@@ -17,7 +18,9 @@ import os
 import sys
 import tempfile
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
+from threading import Lock
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -54,6 +57,9 @@ ALL_PROBES = [
 OUTPUT_DIR = Path(__file__).parent.parent / "results" / "baselines"
 OUTPUT_FILE = OUTPUT_DIR / "baseline_scores.json"
 
+# Parallelism config
+MAX_PARALLEL_PROBES = 6  # max concurrent probes per model
+
 
 # ---------------------------------------------------------------------------
 #  Helpers
@@ -68,8 +74,6 @@ def _atomic_save(data: dict, path: Path) -> None:
     try:
         with os.fdopen(tmp_fd, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
-        # os.replace is atomic on POSIX; on Windows it may raise if target
-        # exists on some older Python versions, but 3.10+ handles it.
         os.replace(tmp_path, str(path))
     except Exception:
         try:
@@ -95,7 +99,6 @@ def _resolve_provider(model_name: str) -> tuple[str, str] | None:
     env_key = _ENV_KEYS.get(provider, "")
     if os.environ.get(env_key):
         return provider, sdk_model
-    # Try fallback if OpenRouter key not set
     if model_name in FALLBACK_REGISTRY:
         fb_provider, fb_model = FALLBACK_REGISTRY[model_name]
         fb_env_key = _ENV_KEYS.get(fb_provider, "")
@@ -122,21 +125,39 @@ def _check_model_available(model_name: str) -> tuple[bool, str]:
     return False, f"None of {needed} set"
 
 
+def _count_probe_items(probe_name: str) -> int:
+    """Estimate number of items in a probe."""
+    import importlib
+    try:
+        mod = importlib.import_module(f"probes.{probe_name}.probe")
+        for attr in ("EASY_ITEMS", "HARD_ITEMS", "QUESTIONS", "SCENARIOS",
+                      "BASE_QUESTIONS", "CHALLENGES"):
+            val = getattr(mod, attr, None)
+            if val is not None and hasattr(val, "__len__"):
+                return len(val)
+        # Check for both EASY+HARD
+        easy = getattr(mod, "EASY_ITEMS", [])
+        hard = getattr(mod, "HARD_ITEMS", [])
+        if easy or hard:
+            return len(easy) + len(hard)
+    except Exception:
+        pass
+    return 15  # fallback estimate
+
+
 # ---------------------------------------------------------------------------
 #  Cost estimation (dry-run)
 # ---------------------------------------------------------------------------
 
-# Approximate tokens per probe invocation (input + output)
-_EST_INPUT_TOKENS_PER_PROBE_ITEM = 200   # average prompt length in tokens
-_EST_OUTPUT_TOKENS_PER_PROBE_ITEM = 15   # probes require short outputs
-_EST_ITEMS_PER_PROBE = 15                # average items per probe
+_EST_INPUT_TOKENS_PER_PROBE_ITEM = 200
+_EST_OUTPUT_TOKENS_PER_PROBE_ITEM = 15
 
 PRICING = {  # (input_per_1M, output_per_1M) USD, updated 2026-03
-    "llama-8b": (0.06, 0.06),      # OpenRouter Llama 3.1 8B
-    "llama-70b": (0.40, 0.40),     # OpenRouter Llama 3.3 70B
-    "qwen-30b": (0.30, 0.30),      # OpenRouter Qwen 32B
-    "claude-sonnet": (3.00, 15.00), # OpenRouter Claude Sonnet 4
-    "gemini-3-pro": (2.00, 12.00),  # OpenRouter Gemini 3 Pro Preview
+    "llama-8b": (0.06, 0.06),
+    "llama-70b": (0.40, 0.40),
+    "qwen-30b": (0.30, 0.30),
+    "claude-sonnet": (3.00, 15.00),
+    "gemini-3-pro": (2.00, 12.00),
 }
 
 
@@ -144,19 +165,93 @@ def _estimate_cost(model_names: list[str], probe_names: list[str]) -> dict:
     """Estimate cost for running baselines."""
     breakdown = {}
     total = 0.0
+    total_items = 0
     for model_name in model_names:
         input_price, output_price = PRICING.get(model_name, (1.0, 5.0))
-        n_probes = len(probe_names)
-        total_input = n_probes * _EST_ITEMS_PER_PROBE * _EST_INPUT_TOKENS_PER_PROBE_ITEM
-        total_output = n_probes * _EST_ITEMS_PER_PROBE * _EST_OUTPUT_TOKENS_PER_PROBE_ITEM
+        n_items = sum(_count_probe_items(p) for p in probe_names)
+        total_input = n_items * _EST_INPUT_TOKENS_PER_PROBE_ITEM
+        total_output = n_items * _EST_OUTPUT_TOKENS_PER_PROBE_ITEM
         cost = (total_input / 1_000_000 * input_price) + (total_output / 1_000_000 * output_price)
         breakdown[model_name] = {
             "input_tokens": total_input,
             "output_tokens": total_output,
+            "n_items": n_items,
             "cost_usd": round(cost, 4),
         }
         total += cost
-    return {"breakdown": breakdown, "total_usd": round(total, 4)}
+        total_items += n_items
+    return {"breakdown": breakdown, "total_usd": round(total, 4), "total_items": total_items}
+
+
+def _estimate_time(n_models: int, n_probes: int, total_items: int) -> dict:
+    """Estimate sequential vs parallel runtime."""
+    avg_latency_per_item = 0.8  # seconds per API call
+    sequential_seconds = total_items * avg_latency_per_item
+    # Parallel: probes run concurrently, ~MAX_PARALLEL_PROBES at a time
+    items_per_probe = total_items / max(n_probes * n_models, 1)
+    parallel_rounds = (n_probes + MAX_PARALLEL_PROBES - 1) // MAX_PARALLEL_PROBES
+    parallel_seconds_per_model = parallel_rounds * items_per_probe * avg_latency_per_item
+    parallel_seconds = parallel_seconds_per_model * n_models
+    speedup = sequential_seconds / max(parallel_seconds, 1)
+    return {
+        "sequential_minutes": round(sequential_seconds / 60, 1),
+        "parallel_minutes": round(parallel_seconds / 60, 1),
+        "speedup": round(speedup, 1),
+    }
+
+
+# ---------------------------------------------------------------------------
+#  Single probe runner (for thread pool)
+# ---------------------------------------------------------------------------
+
+def _run_single_probe(adapter, probe_name: str, progress_counter: dict,
+                      progress_lock: Lock, model_name: str) -> dict:
+    """Run one probe against one adapter. Thread-safe."""
+    t0 = time.perf_counter()
+    try:
+        probe = get_probe(probe_name)
+        result = probe.run(adapter)
+        elapsed = time.perf_counter() - t0
+
+        # Extract score from dict or float
+        if isinstance(result, dict):
+            score = result.get("score", 0.0)
+        else:
+            score = float(result)
+
+        n_items = _count_probe_items(probe_name)
+
+        with progress_lock:
+            progress_counter["done"] += 1
+            done = progress_counter["done"]
+            total = progress_counter["total"]
+            print(f"\r  [{model_name}] {done}/{total} probes | "
+                  f"{probe_name}: {score:.3f} ({elapsed:.1f}s)", end="", flush=True)
+
+        return {
+            "probe": probe_name,
+            "score": round(score, 4),
+            "n_items": n_items,
+            "latency_seconds": round(elapsed, 2),
+            "error": None,
+        }
+
+    except Exception as exc:
+        elapsed = time.perf_counter() - t0
+        with progress_lock:
+            progress_counter["done"] += 1
+            done = progress_counter["done"]
+            total = progress_counter["total"]
+            print(f"\r  [{model_name}] {done}/{total} probes | "
+                  f"{probe_name}: ERROR ({elapsed:.1f}s)", end="", flush=True)
+
+        return {
+            "probe": probe_name,
+            "score": 0.0,
+            "n_items": 0,
+            "latency_seconds": round(elapsed, 2),
+            "error": str(exc),
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -169,11 +264,13 @@ def run_baselines(
     dry_run: bool = False,
     resume: bool = True,
 ) -> dict:
-    """Run probes against API models, return and save baseline scores."""
+    """Run probes against API models with parallel execution."""
 
     # --- Dry run --------------------------------------------------------
     if dry_run:
         estimate = _estimate_cost(model_names, probe_names)
+        time_est = _estimate_time(len(model_names), len(probe_names),
+                                   estimate["total_items"])
         print("\n=== Cost Estimate (dry run) ===")
         for name, info in estimate["breakdown"].items():
             avail, reason = _check_model_available(name)
@@ -181,14 +278,16 @@ def run_baselines(
             print(f"  {name:20s}  ~{info['input_tokens']:>7,} in / "
                   f"~{info['output_tokens']:>6,} out  ${info['cost_usd']:.4f}  [{status}]")
         print(f"\n  Total estimated cost: ${estimate['total_usd']:.4f}")
+        print(f"\n  Sequential estimate: {time_est['sequential_minutes']} minutes")
+        print(f"  Parallel estimate:   {time_est['parallel_minutes']} minutes")
+        print(f"  Speedup:             {time_est['speedup']}x")
         if estimate["total_usd"] > 50:
             print("  WARNING: Estimated cost exceeds $50!")
         return {}
 
     # --- Real run -------------------------------------------------------
     results = _load_existing(OUTPUT_FILE) if resume else {}
-    total_probes = len(probe_names)
-    total_models = len(model_names)
+    checkpoint_lock = Lock()
 
     # Filter to available models
     runnable = []
@@ -206,7 +305,6 @@ def run_baselines(
     for m_idx, model_name in enumerate(runnable, 1):
         resolved = _resolve_provider(model_name)
         if resolved is None:
-            print(f"SKIP: {model_name} (no API key)")
             continue
         provider, sdk_model = resolved
 
@@ -219,56 +317,59 @@ def run_baselines(
             print(f"ERROR creating adapter for {model_name}: {exc}")
             continue
 
-        for p_idx, probe_name in enumerate(probe_names, 1):
-            # Skip if already completed (resume mode)
+        # Filter probes: skip already-completed in resume mode
+        probes_to_run = []
+        for probe_name in probe_names:
             if resume and probe_name in results[model_name]:
                 existing = results[model_name][probe_name]
                 if existing.get("error") is None:
-                    print(f"[{p_idx}/{total_probes} probes] [{m_idx}/{len(runnable)} models] "
-                          f"{probe_name} on {model_name}... CACHED score={existing['score']:.3f}")
                     continue
+            probes_to_run.append(probe_name)
 
-            print(f"[{p_idx}/{total_probes} probes] [{m_idx}/{len(runnable)} models] "
-                  f"{probe_name} on {model_name}...", end=" ", flush=True)
+        cached = len(probe_names) - len(probes_to_run)
+        if cached > 0:
+            print(f"[{m_idx}/{len(runnable)}] {model_name}: {cached} cached, "
+                  f"{len(probes_to_run)} to run")
+        if not probes_to_run:
+            print(f"[{m_idx}/{len(runnable)}] {model_name}: all cached, skipping")
+            continue
 
-            t0 = time.perf_counter()
-            try:
-                probe = get_probe(probe_name)
-                score = probe.run(adapter)
-                elapsed = time.perf_counter() - t0
-                # Count items (probes have varying item counts)
-                n_items = getattr(probe, "n_items", None)
-                if n_items is None:
-                    # Heuristic: check common attributes
-                    for attr in ("QUESTIONS", "SCENARIOS", "items", "ITEMS",
-                                 "SENTENCES", "CHALLENGES"):
-                        val = getattr(probe, attr, None)
-                        if val is not None and hasattr(val, "__len__"):
-                            n_items = len(val)
-                            break
-                    else:
-                        n_items = _EST_ITEMS_PER_PROBE
+        # Run probes in parallel
+        progress_lock = Lock()
+        progress_counter = {"done": 0, "total": len(probes_to_run)}
 
-                results[model_name][probe_name] = {
-                    "score": round(score, 4),
-                    "n_items": n_items,
-                    "latency_seconds": round(elapsed, 2),
-                    "error": None,
-                }
-                print(f"score={score:.3f} ({elapsed:.1f}s)")
+        model_t0 = time.perf_counter()
+        print(f"[{m_idx}/{len(runnable)}] {model_name}: running {len(probes_to_run)} probes "
+              f"(max {MAX_PARALLEL_PROBES} parallel)...")
 
-            except Exception as exc:
-                elapsed = time.perf_counter() - t0
-                results[model_name][probe_name] = {
-                    "score": 0.0,
-                    "n_items": 0,
-                    "latency_seconds": round(elapsed, 2),
-                    "error": str(exc),
-                }
-                print(f"ERROR: {exc}")
+        with ThreadPoolExecutor(max_workers=MAX_PARALLEL_PROBES) as executor:
+            futures = {
+                executor.submit(
+                    _run_single_probe, adapter, pname,
+                    progress_counter, progress_lock, model_name
+                ): pname
+                for pname in probes_to_run
+            }
 
-            # Atomic checkpoint after every probe/model pair
-            _atomic_save(results, OUTPUT_FILE)
+            for future in as_completed(futures):
+                probe_result = future.result()
+                pname = probe_result["probe"]
+
+                # Thread-safe checkpoint
+                with checkpoint_lock:
+                    results[model_name][pname] = {
+                        "score": probe_result["score"],
+                        "n_items": probe_result["n_items"],
+                        "latency_seconds": probe_result["latency_seconds"],
+                        "error": probe_result["error"],
+                    }
+                    _atomic_save(results, OUTPUT_FILE)
+
+        model_elapsed = time.perf_counter() - model_t0
+        n_completed = len(probes_to_run)
+        total_items = sum(_count_probe_items(p) for p in probes_to_run)
+        print(f"\n  [{model_name}] Complete — {n_completed} probes, ~{total_items} questions, "
+              f"{model_elapsed:.1f}s")
 
     print(f"\nResults saved to {OUTPUT_FILE}")
     return results
@@ -292,7 +393,7 @@ def main():
     )
     parser.add_argument(
         "--dry-run", action="store_true",
-        help="Estimate cost only, don't run",
+        help="Estimate cost and time only, don't run",
     )
     parser.add_argument(
         "--no-resume", action="store_true",

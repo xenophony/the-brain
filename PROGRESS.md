@@ -202,6 +202,13 @@
 [08:10] DONE: Updated MockAdapter for all changed questions (temporal yes/no, noise_robustness clean prompts, fragile mode keywords)
 [08:10] DONE: All 192 tests passing, 14 skipped
 
+## Baseline Runner Parallelization
+[08:30] DONE: Added rate_limit_workers to all API adapters (Claude/Gemini=5, Groq/OpenRouter=10)
+[08:30] DONE: Rewrote run_baselines with ThreadPoolExecutor — 6 probes concurrent per model
+[08:30] DONE: Thread-safe progress reporting and checkpoint locking
+[08:30] DONE: Added time estimate to --dry-run (sequential: 13.5min, parallel: 2.2min, 6x speedup)
+[08:30] DONE: All 192 tests passing, 14 skipped
+
 ## OpenRouter Integration + claude-opus Removal
 [08:00] DONE: Added OpenRouterAdapter to sweep/api_adapters.py — OpenAI-compatible client, exponential backoff, API logging
 [08:00] DONE: Added "openrouter" to ADAPTER_MAP and _ENV_KEYS in api_adapters.py

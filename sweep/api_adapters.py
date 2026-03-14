@@ -91,6 +91,7 @@ class BaseAPIAdapter(ABC):
     """Base class for all API adapters.  Same interface as MockAdapter."""
 
     num_layers = None  # API models don't expose internal layers
+    rate_limit_workers: int = 5  # max concurrent requests (override per adapter)
 
     def __init__(self, model: str, provider: str):
         self.model = model
@@ -115,6 +116,8 @@ class BaseAPIAdapter(ABC):
 
 class ClaudeAdapter(BaseAPIAdapter):
     """Adapter for Anthropic Claude models via the Messages API."""
+
+    rate_limit_workers = 5  # conservative — Anthropic rate limits
 
     def __init__(self, model: str = "claude-sonnet-4-20250514"):
         super().__init__(model=model, provider="claude")
@@ -173,6 +176,8 @@ class ClaudeAdapter(BaseAPIAdapter):
 class GeminiAdapter(BaseAPIAdapter):
     """Adapter for Google Gemini models via google-generativeai SDK."""
 
+    rate_limit_workers = 5  # conservative — Google rate limits
+
     def __init__(self, model: str = "gemini-2.5-pro-preview-05-06"):
         super().__init__(model=model, provider="gemini")
         try:
@@ -229,6 +234,8 @@ class GeminiAdapter(BaseAPIAdapter):
 
 class GroqAdapter(BaseAPIAdapter):
     """Adapter for Groq inference API (OpenAI-compatible chat completions)."""
+
+    rate_limit_workers = 10  # Groq has generous rate limits
 
     def __init__(self, model: str = "llama-3.1-8b-instant"):
         super().__init__(model=model, provider="groq")
@@ -335,6 +342,8 @@ class TogetherAdapter(BaseAPIAdapter):
 
 class OpenRouterAdapter(BaseAPIAdapter):
     """OpenRouter API adapter — single key for multiple providers."""
+
+    rate_limit_workers = 10  # OpenRouter has generous rate limits
 
     def __init__(self, model: str = "meta-llama/llama-3.1-8b-instruct"):
         super().__init__(model=model, provider="openrouter")
