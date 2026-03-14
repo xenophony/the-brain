@@ -241,7 +241,12 @@ class ExLlamaV2LayerAdapter:
     # ------------------------------------------------------------------ #
 
     def forward_with_hooks(self, prompt_or_ids, hook_fn, layer_path=None):
-        """Run forward pass calling hook_fn at each layer."""
+        """Run forward pass calling hook_fn(exec_pos, layer_idx, hidden) at each layer.
+
+        Cache is reset at the start (intentional — hooks are read-only so
+        cache corruption from duplicate layers is avoided by the reset,
+        matching forward_with_path's prefill behavior).
+        """
         if layer_path is None:
             layer_path = self._layer_path or list(range(self.num_layers))
 
@@ -259,17 +264,21 @@ class ExLlamaV2LayerAdapter:
             if isinstance(hidden, tuple):
                 hidden = hidden[0]
 
+        # Pre-layer-0 hook: embedding state (position -1)
+        if hook_fn:
+            hook_fn(-1, -1, hidden.detach().clone())
+
         for k, layer_idx in enumerate(layer_path):
             module = self._layer_modules[layer_idx]
             hidden = module.forward(hidden, cache, None)
             if isinstance(hidden, tuple):
                 hidden = hidden[0]
             if hook_fn:
-                hook_fn(k, hidden.detach().clone())
+                hook_fn(k, layer_idx, hidden.detach().clone())
 
         return hidden
 
-    def project_to_vocab(self, hidden_state):
+    def project_to_vocab(self, hidden_state, target_token_ids=None):
         """Project hidden state to vocabulary probability distribution."""
         # Apply final norm + lm_head
         h = hidden_state
@@ -282,8 +291,10 @@ class ExLlamaV2LayerAdapter:
         logits = h[0, -1, :] if h.dim() == 3 else h[-1, :]
         probs = torch.softmax(logits, dim=-1)
 
-        # Return as dict for consistency with MockAdapter
-        return {i: probs[i].item() for i in range(min(100, len(probs)))}
+        if target_token_ids is not None:
+            return {tid: probs[tid].item() for tid in target_token_ids if tid < len(probs)}
+        # Full distribution for entropy computation
+        return {i: probs[i].item() for i in range(len(probs))}
 
     def tokens_to_ids(self, token_strings):
         """Convert token strings to token IDs."""

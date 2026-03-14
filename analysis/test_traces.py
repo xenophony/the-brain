@@ -54,20 +54,22 @@ def tracer(perfect_model):
 class TestMockAdapterHooks:
     def test_hook_called_for_each_layer(self, perfect_model):
         calls = []
-        def hook_fn(pos, hidden):
-            calls.append((pos, hidden))
+        def hook_fn(exec_pos, layer_idx, hidden):
+            calls.append((exec_pos, layer_idx, hidden))
 
         perfect_model.forward_with_hooks("test prompt", hook_fn)
-        assert len(calls) == 32, f"Expected 32 hook calls, got {len(calls)}"
+        # 32 layer calls + 1 pre-layer-0 embedding call = 33
+        assert len(calls) == 33, f"Expected 33 hook calls, got {len(calls)}"
 
     def test_hook_called_with_custom_path(self, perfect_model):
         calls = []
-        def hook_fn(pos, hidden):
-            calls.append(pos)
+        def hook_fn(exec_pos, layer_idx, hidden):
+            calls.append((exec_pos, layer_idx))
 
         path = [0, 1, 2, 3, 4, 3, 4, 5]
         perfect_model.forward_with_hooks("test prompt", hook_fn, layer_path=path)
-        assert len(calls) == len(path)
+        # len(path) + 1 for embedding hook
+        assert len(calls) == len(path) + 1
 
     # ------------------------------------------------------------------ #
     #  Test 2: project_to_vocab returns dict with probabilities            #
@@ -98,7 +100,8 @@ class TestResidualTracer:
     def test_trace_returns_layer_trace(self, tracer):
         trace = tracer.trace("What is 2+2?", ["4"])
         assert isinstance(trace, LayerTrace)
-        assert len(trace.layer_probabilities) == 32
+        # 32 layers + 1 embedding hook = 33
+        assert len(trace.layer_probabilities) == 33
 
     def test_trace_peak_layer_in_range(self, tracer):
         trace = tracer.trace("What is 2+2?", ["4"])
@@ -127,7 +130,8 @@ class TestResidualTracer:
     def test_trace_with_custom_path(self, tracer):
         path = [0, 1, 2, 3, 4, 5]
         trace = tracer.trace("Test", ["42"], layer_path=path)
-        assert len(trace.layer_probabilities) == 6
+        # 6 layers + 1 embedding hook = 7
+        assert len(trace.layer_probabilities) == 7
 
     def test_trace_batch(self, tracer):
         questions = ["Q1", "Q2", "Q3"]
@@ -181,23 +185,15 @@ class TestHallucinationTrace:
     def test_hallucination_trace_structure(self, tracer):
         hall_trace = tracer.trace_hallucination(
             "What is the meaning of life?",
-            ["uncertain", "maybe"],
-            ["definitely", "certainly"],
         )
         assert isinstance(hall_trace, HallucinationTrace)
-        assert len(hall_trace.hedge_probabilities) == 32
-        assert len(hall_trace.confabulation_probabilities) == 32
+        # 32 layers + 1 embedding = 33
+        assert len(hall_trace.entropy_by_layer) == 33
 
-    def test_hallucination_trace_probabilities_valid(self, tracer):
-        hall_trace = tracer.trace_hallucination(
-            "Test question",
-            ["hedge"],
-            ["confab"],
-        )
-        for p in hall_trace.hedge_probabilities:
-            assert 0.0 <= p <= 1.0
-        for p in hall_trace.confabulation_probabilities:
-            assert 0.0 <= p <= 1.0
+    def test_hallucination_trace_entropy_valid(self, tracer):
+        hall_trace = tracer.trace_hallucination("Test question")
+        for e in hall_trace.entropy_by_layer:
+            assert e >= 0.0  # entropy is non-negative
 
 
 # ------------------------------------------------------------------ #
@@ -209,7 +205,8 @@ class TestDomainTrace:
         dt = tracer.trace_domain("math", n_questions=4)
         assert isinstance(dt, DomainTrace)
         assert dt.n_questions > 0
-        assert len(dt.mean_probabilities) == 32
+        # 32 layers + 1 embedding hook = 33
+        assert len(dt.mean_probabilities) == 33
         assert dt.answer_computation_region[0] <= dt.answer_computation_region[1]
 
     def test_domain_trace_computation_region_valid(self, tracer):
@@ -358,3 +355,129 @@ class TestExistingModesUnchanged:
         logprobs = model.get_logprobs("test", ["a", "b", "c"])
         assert isinstance(logprobs, dict)
         assert len(logprobs) == 3
+
+
+# ------------------------------------------------------------------ #
+#  Audit fix tests                                                     #
+# ------------------------------------------------------------------ #
+
+class TestAuditFixes:
+    """Tests for fixes from external audit."""
+
+    def test_entropy_tracking_in_hallucination_perfect(self):
+        """Entropy should decrease through layers in perfect mode."""
+        model = MockAdapter(mode="perfect", seed=42, num_layers=32)
+        tracer = ResidualTracer(model)
+        ht = tracer.trace_hallucination("Test question")
+        assert isinstance(ht, HallucinationTrace)
+        assert len(ht.entropy_by_layer) == 33
+        # First entropy (embedding) should be high
+        assert ht.entropy_by_layer[0] > 0.0
+        # Entropy should generally decrease in perfect mode
+        assert ht.entropy_by_layer[-1] < ht.entropy_by_layer[0]
+
+    def test_entropy_tracking_in_hallucination_terrible(self):
+        """Entropy should stay high in terrible mode."""
+        model = MockAdapter(mode="terrible", seed=42, num_layers=32)
+        tracer = ResidualTracer(model)
+        ht = tracer.trace_hallucination("Test question")
+        # Entropy stays uniformly high (~5.0) in terrible mode
+        for e in ht.entropy_by_layer[1:]:  # skip embedding
+            assert e > 3.0, f"Expected high entropy in terrible mode, got {e}"
+
+    def test_entropy_drop_layer_detected(self):
+        """Sharpest entropy drop should be detected."""
+        model = MockAdapter(mode="perfect", seed=42, num_layers=32)
+        tracer = ResidualTracer(model)
+        ht = tracer.trace_hallucination("Test question")
+        assert ht.entropy_drop_layer > 0
+        assert ht.entropy_drop_layer < 33
+
+    def test_three_tuple_storage(self):
+        """layer_probabilities should store (exec_pos, layer_idx, p_correct) tuples."""
+        model = MockAdapter(mode="perfect", seed=42, num_layers=16)
+        tracer = ResidualTracer(model)
+        trace = tracer.trace("Test", ["42"])
+        for entry in trace.layer_probabilities:
+            assert len(entry) == 3, f"Expected 3-tuple, got {len(entry)}-tuple: {entry}"
+            exec_pos, layer_idx, p_correct = entry
+            assert isinstance(p_correct, float)
+
+    def test_three_tuple_first_is_embedding(self):
+        """First entry should be the embedding hook at position -1."""
+        model = MockAdapter(mode="perfect", seed=42, num_layers=16)
+        tracer = ResidualTracer(model)
+        trace = tracer.trace("Test", ["42"])
+        exec_pos, layer_idx, p_correct = trace.layer_probabilities[0]
+        assert exec_pos == -1
+        assert layer_idx == -1
+
+    def test_pre_layer_0_hook_fires(self):
+        """Hook at position -1 (embedding) should be called before layers."""
+        model = MockAdapter(mode="perfect", seed=42, num_layers=8)
+        calls = []
+        def hook_fn(exec_pos, layer_idx, hidden):
+            calls.append((exec_pos, layer_idx))
+        model.forward_with_hooks("test", hook_fn)
+        # First call should be (-1, -1) for embedding
+        assert calls[0] == (-1, -1), f"Expected (-1, -1), got {calls[0]}"
+        # Subsequent calls should have exec_pos 0..7
+        for i in range(1, len(calls)):
+            assert calls[i][0] == i - 1
+
+    def test_sycophancy_pressure_answer_tracking(self):
+        """trace_sycophancy should track pressure_answer_probabilities."""
+        model = MockAdapter(mode="sycophantic", seed=42, num_layers=32)
+        tracer = ResidualTracer(model)
+        st = tracer.trace_sycophancy(
+            "What is 2+2?",
+            "What is 2+2? Actually I think it's 5.",
+            ["4"],
+            pressure_answer_tokens=["5"],
+        )
+        assert isinstance(st, SycophancyTrace)
+        assert hasattr(st, 'pressure_answer_probabilities')
+        assert hasattr(st, 'genuine_override_layer')
+        assert hasattr(st, 'distraction_only')
+        assert len(st.pressure_answer_probabilities) == 33  # 32 + embedding
+
+    def test_sycophancy_without_pressure_tokens(self):
+        """trace_sycophancy should work without pressure_answer_tokens (backward compat)."""
+        model = MockAdapter(mode="perfect", seed=42, num_layers=16)
+        tracer = ResidualTracer(model)
+        st = tracer.trace_sycophancy("Q1", "Q2 pressure", ["42"])
+        assert isinstance(st, SycophancyTrace)
+        assert st.pressure_answer_probabilities == []
+
+    def test_project_to_vocab_with_target_token_ids(self):
+        """project_to_vocab with target_token_ids should return only those IDs."""
+        model = MockAdapter(mode="perfect", seed=42)
+        hidden = {"_synthetic_p": 0.8, "_layer_idx": 10, "_position": 10}
+        probs = model.project_to_vocab(hidden, target_token_ids=["_correct", "_other"])
+        assert "_correct" in probs
+        assert "_other" in probs
+        assert abs(probs["_correct"] - 0.8) < 1e-6
+
+    def test_project_to_vocab_without_target_ids(self):
+        """project_to_vocab without target_token_ids returns full distribution."""
+        model = MockAdapter(mode="perfect", seed=42)
+        hidden = {"_synthetic_p": 0.75, "_layer_idx": 10, "_position": 10}
+        probs = model.project_to_vocab(hidden)
+        assert "_correct" in probs
+        assert "_default" in probs
+
+    def test_ignore_early_frac(self):
+        """Early layer noise filtering should skip first ignore_early layers."""
+        model = MockAdapter(mode="perfect", seed=42, num_layers=20)
+        tracer = ResidualTracer(model, ignore_early_frac=0.3)
+        assert tracer.ignore_early == 6  # int(20 * 0.3)
+
+    def test_mock_entropy_in_hidden_state(self):
+        """Mock hidden states should include _entropy field."""
+        model = MockAdapter(mode="perfect", seed=42, num_layers=8)
+        states = []
+        def hook_fn(exec_pos, layer_idx, hidden):
+            states.append(hidden)
+        model.forward_with_hooks("test", hook_fn)
+        for s in states:
+            assert "_entropy" in s, f"Hidden state missing _entropy: {s.keys()}"

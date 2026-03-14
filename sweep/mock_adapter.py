@@ -864,6 +864,11 @@ class MockAdapter:
 
         n_steps = len(layer_path)
 
+        # Pre-layer-0 hook: embedding state (position -1)
+        if hook_fn:
+            hook_fn(-1, -1, {"_synthetic_p": 0.02, "_layer_idx": -1, "_position": -1,
+                             "_entropy": 5.0})
+
         for k, layer_idx in enumerate(layer_path):
             # Generate synthetic probability that evolves through layers
             t = k / max(n_steps - 1, 1)  # normalized position 0..1
@@ -875,25 +880,62 @@ class MockAdapter:
                 else:
                     p = 0.75 - 1.5 * (t - 0.6)
                     p = max(p, 0.05)
+                # Entropy: drops normally then partially rises at 60%
+                if t < 0.6:
+                    entropy = 5.0 / (1 + _math.exp(8 * (t - 0.3)))
+                else:
+                    entropy = 1.0 + 2.0 * (t - 0.6) / 0.4
+                    entropy = min(entropy, 3.0)
             elif self.mode == "terrible":
                 # Flat low probability
                 p = 0.02 + 0.03 * _math.sin(t * _math.pi)
+                # Entropy stays uniformly high
+                entropy = 5.0
             else:
                 # Perfect mode: sigmoidal rise, peak at ~60%, slight decay
                 p = 0.05 + 0.85 / (1 + _math.exp(-12 * (t - 0.45)))
                 if t > 0.7:
                     p -= 0.05 * (t - 0.7) / 0.3
+                # Entropy: starts high (~5.0), drops sigmoidally to ~1.0 at 70% depth
+                entropy = 1.0 + 4.0 / (1 + _math.exp(10 * (t - 0.5)))
 
             # Create synthetic hidden state (just the probability value)
-            hidden = {"_synthetic_p": p, "_layer_idx": layer_idx, "_position": k}
-            hook_fn(k, hidden)
+            hidden = {"_synthetic_p": p, "_layer_idx": layer_idx, "_position": k,
+                      "_entropy": entropy}
+            hook_fn(k, layer_idx, hidden)
 
-    def project_to_vocab(self, hidden):
-        """Return synthetic probability distribution from hidden state."""
+    def project_to_vocab(self, hidden, target_token_ids=None):
+        """Return synthetic probability distribution from hidden state.
+
+        When target_token_ids is provided, returns only those entries.
+        When not provided, returns a synthetic distribution whose entropy
+        matches the _entropy field in the hidden state (if present), to
+        support entropy-based hallucination tracing.
+        """
+        import math as _math
+
         if isinstance(hidden, dict) and "_synthetic_p" in hidden:
             p = hidden["_synthetic_p"]
-            # Return dict mapping token_id -> probability
-            # Correct tokens get p, rest gets distributed
+            if target_token_ids is not None:
+                return {tid: p if tid == "_correct" else (1.0 - p) / max(len(target_token_ids) - 1, 1)
+                        for tid in target_token_ids}
+
+            # If _entropy is present, generate a synthetic vocab distribution
+            # that approximates the target entropy using N uniform "noise" tokens
+            if "_entropy" in hidden:
+                target_entropy = hidden["_entropy"]
+                # Build distribution: correct token gets p, remaining mass
+                # is distributed across enough synthetic tokens to approximate
+                # the target entropy. We use N = exp(target_entropy) tokens
+                # for the noise portion.
+                n_noise = max(int(_math.exp(target_entropy)), 2)
+                remaining = 1.0 - p
+                noise_p = remaining / n_noise if n_noise > 0 else 0.0
+                dist = {"_correct": p}
+                for i in range(n_noise):
+                    dist[f"_noise_{i}"] = noise_p
+                return dist
+
             return {"_correct": p, "_default": (1.0 - p)}
         return {"_default": 1.0}
 
