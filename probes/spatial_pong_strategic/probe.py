@@ -174,12 +174,18 @@ You MUST respond with exactly one word: up, down, or stay. Nothing else."""
 
 
 def score_pong_strategic(response: str, expected: str) -> float:
-    """Exact match scoring: 1.0 if correct, 0.0 otherwise."""
+    """Extract last directional word from response and compare to expected."""
     cleaned = response.strip().lower()
+    last_word = None
+    last_pos = -1
     for word in ["stay", "up", "down"]:
-        if word in cleaned:
-            return 1.0 if word == expected else 0.0
-    return 0.0
+        pos = cleaned.rfind(word)
+        if pos > last_pos:
+            last_pos = pos
+            last_word = word
+    if last_word is None:
+        return 0.0
+    return 1.0 if last_word == expected else 0.0
 
 
 @register_probe
