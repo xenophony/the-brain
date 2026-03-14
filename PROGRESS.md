@@ -253,3 +253,11 @@
 [10:30] DONE: FIX 3 — Consistency sample printing fixed: handles reasoning_raw/direct_raw keys not just "response"
 [10:30] DONE: FIX 4 — Per-call timeout reduced from 30s to 20s to prevent cumulative hanging on slow endpoints
 [10:30] DONE: All 192 tests passing
+
+## Baseline Response Analysis
+[11:00] DONE: Analyzed spatial responses — Claude truncated by max_new_tokens=5 (reasoning preamble), valid coords avg 0.518 vs llama 0.648
+[11:00] DONE: Analyzed consistency responses — 3/12 extraction failures from intermediate calc numbers, not reasoning failures
+[11:00] DONE: Analyzed code responses — 2/16 truncated at 400 tokens, model knows algorithm but response cut off
+[11:00] DONE: Analyzed EQ qwen-30b — 12/16 empty responses from content filtering, not extraction bug
+[11:00] DONE: Created TRACE_ANALYSIS.md with full findings and fix recommendations
+[11:00] NEXT: Apply 3 remaining fixes (spatial tokens, code tokens, consistency extraction)
