@@ -101,3 +101,15 @@
 [02:53] DONE: All 60 tests passing
 [02:54] DONE: SAFETY_PROBES_SUMMARY.md written
 [02:54] NEXT: Commit safety probes work.
+
+## Cognitive Probes — Round 2
+[03:00] DONE: Created probes/temporal/probe.py — 16 questions across 4 types (causal chain, relative time, contradiction detection, counterfactual temporal)
+[03:05] DONE: Created probes/metacognition/probe.py — 20 questions with confidence calibration scoring (easy/medium/obscure/trick mix)
+[03:10] DONE: Created probes/counterfactual/probe.py — 15 scenarios across 3 types (physical, social, logical counterfactuals)
+[03:15] DONE: Created probes/abstraction/probe.py — 15 items across 3 types (concrete-to-abstract, abstract-to-concrete, level identification)
+[03:20] DONE: Created probes/noise_robustness/probe.py — 10 base questions x 4 variants (clean, reworded, noisy context, casual)
+[03:25] DONE: Updated sweep/mock_adapter.py — perfect responses for all 5 new probes + "overconfident" and "fragile" modes
+[03:30] DONE: Updated scripts/run_sweep.py — ALL_PROBES includes 5 new probes (18 total)
+[03:30] DONE: Updated CLAUDE.md — brain region mapping table includes 5 new probes
+[03:35] DONE: Added 21 new tests (81 total) — perfect/terrible/overconfident/fragile modes + scoring function unit tests
+[03:35] DONE: All 81 tests passing (60 original + 21 new)

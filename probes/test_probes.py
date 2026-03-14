@@ -533,6 +533,173 @@ class TestSafetyProbeScoringFunctions:
         assert score_sycophancy_scenario(["banana", "6", "6", "6"], scenario) is None
 
 
+# ------------------------------------------------------------------ #
+#  New probe tests — temporal, metacognition, counterfactual,          #
+#  abstraction, noise_robustness                                       #
+# ------------------------------------------------------------------ #
+
+class TestTemporalProbe:
+    def test_perfect_score(self, perfect_model):
+        probe = get_probe("temporal")
+        score = probe.run(perfect_model)
+        assert score > 0.9, f"Temporal probe perfect score too low: {score}"
+
+    def test_terrible_score(self, terrible_model):
+        probe = get_probe("temporal")
+        score = probe.run(terrible_model)
+        assert score < 0.3, f"Temporal probe terrible score too high: {score}"
+
+
+class TestMetacognitionProbe:
+    def test_perfect_score(self, perfect_model):
+        probe = get_probe("metacognition")
+        score = probe.run(perfect_model)
+        # Calibration probe — perfect model gives moderate confidence on obscure Qs
+        assert score > 0.7, f"Metacognition probe perfect score too low: {score}"
+
+    def test_terrible_score(self, terrible_model):
+        probe = get_probe("metacognition")
+        score = probe.run(terrible_model)
+        assert score < 0.3, f"Metacognition probe terrible score too high: {score}"
+
+    def test_overconfident_mode_scores_low(self):
+        model = MockAdapter(mode="overconfident", seed=42)
+        probe = get_probe("metacognition")
+        score = probe.run(model)
+        assert score < 0.4, f"Metacognition overconfident score too high: {score}"
+
+
+class TestCounterfactualProbe:
+    def test_perfect_score(self, perfect_model):
+        probe = get_probe("counterfactual")
+        score = probe.run(perfect_model)
+        assert score > 0.9, f"Counterfactual probe perfect score too low: {score}"
+
+    def test_terrible_score(self, terrible_model):
+        probe = get_probe("counterfactual")
+        score = probe.run(terrible_model)
+        assert score < 0.3, f"Counterfactual probe terrible score too high: {score}"
+
+
+class TestAbstractionProbe:
+    def test_perfect_score(self, perfect_model):
+        probe = get_probe("abstraction")
+        score = probe.run(perfect_model)
+        assert score > 0.9, f"Abstraction probe perfect score too low: {score}"
+
+    def test_terrible_score(self, terrible_model):
+        probe = get_probe("abstraction")
+        score = probe.run(terrible_model)
+        assert score < 0.3, f"Abstraction probe terrible score too high: {score}"
+
+
+class TestNoiseRobustnessProbe:
+    def test_perfect_score(self, perfect_model):
+        probe = get_probe("noise_robustness")
+        score = probe.run(perfect_model)
+        assert score > 0.9, f"Noise robustness probe perfect score too low: {score}"
+
+    def test_terrible_score(self, terrible_model):
+        probe = get_probe("noise_robustness")
+        score = probe.run(terrible_model)
+        assert score < 0.3, f"Noise robustness probe terrible score too high: {score}"
+
+    def test_fragile_mode_scores_low(self):
+        model = MockAdapter(mode="fragile", seed=42)
+        probe = get_probe("noise_robustness")
+        score = probe.run(model)
+        assert score <= 0.3, f"Noise robustness fragile score too high: {score}"
+
+
+class TestNewProbeScoringFunctions:
+    def test_temporal_scoring_exact_match(self):
+        from probes.temporal.probe import score_temporal
+        q_a = {"type": "A", "answer": "no"}
+        assert score_temporal("no", q_a) == 1.0
+        assert score_temporal("Yes", q_a) == 0.0
+        assert score_temporal("definitely no", q_a) == 1.0
+        assert score_temporal("banana", q_a) == 0.0
+
+    def test_temporal_scoring_integer_partial(self):
+        from probes.temporal.probe import score_temporal
+        q_b = {"type": "B", "answer": 9}
+        assert score_temporal("9", q_b) == 1.0
+        assert score_temporal("The answer is 9", q_b) == 1.0
+        assert score_temporal("10", q_b) == 0.5  # off by 1
+        assert score_temporal("8", q_b) == 0.5   # off by 1
+        assert score_temporal("15", q_b) == 0.0
+        assert score_temporal("banana", q_b) == 0.0
+
+    def test_temporal_scoring_consistency(self):
+        from probes.temporal.probe import score_temporal
+        q_c = {"type": "C", "answer": "inconsistent"}
+        assert score_temporal("inconsistent", q_c) == 1.0
+        assert score_temporal("consistent", q_c) == 0.0
+        assert score_temporal("The timeline is inconsistent", q_c) == 1.0
+
+    def test_metacognition_extraction(self):
+        from probes.metacognition.probe import extract_answer_and_confidence
+        # Standard format: answer on first line, digit on second
+        assert extract_answer_and_confidence("Paris\n9") == ("Paris", 9)
+        assert extract_answer_and_confidence("4\n9") == ("4", 9)
+        assert extract_answer_and_confidence("The answer is 42\n5") == ("The answer is 42", 5)
+        # No confidence digit
+        assert extract_answer_and_confidence("Paris")[1] is None
+        # Empty
+        assert extract_answer_and_confidence("") == ("", None)
+
+    def test_metacognition_scoring_correct_high_conf(self):
+        from probes.metacognition.probe import score_metacognition
+        q = {"accept": ["paris"]}
+        # Correct + confidence 9 = 9/9 = 1.0
+        assert score_metacognition("Paris\n9", q) == 1.0
+        # Correct + confidence 0 = 0/9 = 0.0
+        assert abs(score_metacognition("Paris\n0", q) - 0.0) < 0.01
+
+    def test_metacognition_scoring_wrong_low_conf(self):
+        from probes.metacognition.probe import score_metacognition
+        q = {"accept": ["paris"]}
+        # Wrong + confidence 0 = 1 - 0/9 = 1.0
+        assert score_metacognition("London\n0", q) == 1.0
+        # Wrong + confidence 9 = 1 - 9/9 = 0.0
+        assert abs(score_metacognition("London\n9", q) - 0.0) < 0.01
+
+    def test_counterfactual_scoring(self):
+        from probes.counterfactual.probe import score_counterfactual
+        # Type A
+        s_a = {"type": "A", "answer": "faster"}
+        assert score_counterfactual("faster", s_a) == 1.0
+        assert score_counterfactual("slower", s_a) == 0.0
+        # Type B
+        s_b = {"type": "B", "answer": "B"}
+        assert score_counterfactual("B", s_b) == 1.0
+        assert score_counterfactual("b", s_b) == 1.0
+        assert score_counterfactual("A", s_b) == 0.0
+        # Type C
+        s_c = {"type": "C", "answer": "B"}
+        assert score_counterfactual("B", s_c) == 1.0
+        assert score_counterfactual("D", s_c) == 0.0
+
+    def test_abstraction_scoring(self):
+        from probes.abstraction.probe import score_abstraction
+        q_a = {"type": "A", "accept": ["colors", "colours"]}
+        assert score_abstraction("colors", q_a) == 1.0
+        assert score_abstraction("colours", q_a) == 1.0
+        assert score_abstraction("banana", q_a) == 0.0
+
+        q_c = {"type": "C", "answer": "vehicle"}
+        assert score_abstraction("vehicle", q_c) == 1.0
+        assert score_abstraction("red Toyota Camry", q_c) == 0.0
+
+    def test_noise_robustness_scoring(self):
+        from probes.noise_robustness.probe import score_single_version, score_noise_robustness_base
+        assert score_single_version("Paris", ["paris"]) is True
+        assert score_single_version("London", ["paris"]) is False
+        assert score_noise_robustness_base([True, True, True, True]) == 1.0
+        assert score_noise_robustness_base([True, False, False, False]) == 0.25
+        assert score_noise_robustness_base([False, False, False, False]) == 0.0
+
+
 class TestSafetyAnalysis:
     def test_safety_analysis_produces_report(self, tmp_path):
         """Safety analysis should produce safety_circuit_report.json."""

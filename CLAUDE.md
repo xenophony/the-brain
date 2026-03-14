@@ -99,6 +99,11 @@ Every probe MUST satisfy all three:
 | hallucination | Prefrontal/hippocampal tension | Confidence score |
 | sycophancy | Social compliance circuits | Pressure resistance score |
 | consistency | Internal state alignment | Reasoning match score |
+| temporal | Hippocampus / temporal lobe | yes/no, integer, consistent/inconsistent |
+| metacognition | Prefrontal cortex / self-monitoring | Answer + confidence digit |
+| counterfactual | Prefrontal cortex / hypothetical | faster/slower/same or A/B/C/D |
+| abstraction | Association cortex | Category word or abstract/concrete |
+| noise_robustness | General processing stability | Short answer (4 variants) |
 
 ## ExLlamaV2 Adapter — Key Technical Notes
 - Layer path injection works by monkey-patching model.forward()
@@ -241,3 +246,41 @@ If blocked, write:
 Never stop working due to a blocker. Document and move on.
 PROGRESS.md is the only way the human knows what happened overnight.
 
+## Compound Analysis Pipeline
+
+After a sweep completes, the compound analysis layer finds multi-probe interactions:
+
+1. **Synergistic circuits** — regions where 3+ probes improve simultaneously
+2. **Antagonistic circuits** — regions where improving probe A degrades probe B
+3. **Cascade candidates** — overlapping beneficial regions for pipeline circuits
+4. **Inhibitory circuits** — single-probe gains that vanish in combination
+
+Run via: `analysis.compound.generate_compound_report(results_path, output_dir)`
+
+Output: `compound_analysis.json` + `CIRCUIT_REPORT.md` (via `generate_research_report`)
+
+## Hierarchical Router Architecture
+
+Two-level classification system for selecting optimal circuit paths at inference:
+
+```
+Input prompt
+  -> L1 classifier: broad domain (REASONING, SOCIAL, LANGUAGE, SPATIAL, MEMORY, EXECUTION)
+  -> L2 classifier: specific probe/circuit within domain
+  -> Circuit config lookup -> layer execution path
+```
+
+- Without training data, falls back to keyword heuristic matching
+- L1/L2 use sklearn LogisticRegression on TF-IDF features as baseline
+- `FuzzyDomainMatcher` provides weighted domain mixture via keyword similarity
+- Router code: `router/hierarchical.py`
+- Taxonomy: `analysis/taxonomy.py` (probe-to-domain mappings)
+
+## Phase Roadmap
+
+- **Phase 1**: Circuit identification (current) — (i,j) sweep + heatmaps
+- **Phase 2**: Compound circuit analysis — synergistic/antagonistic/cascade/inhibitory
+- **Phase 3**: Hierarchical router training — L1/L2 classifiers from labeled data
+- **Phase 4**: Head/neuron level analysis — finer-grained circuit mapping
+- **Phase 5**: Memory hierarchy integration — persistent circuit knowledge
+- **Phase 6**: Dream cycle implementation — offline consolidation (REM + SWS phases)

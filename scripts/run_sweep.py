@@ -24,7 +24,8 @@ from probes.registry import list_probes
 
 
 ALL_PROBES = ["math", "eq", "code", "factual", "spatial", "language", "tool_use", "holistic",
-              "planning", "instruction", "hallucination", "sycophancy", "consistency"]
+              "planning", "instruction", "hallucination", "sycophancy", "consistency",
+              "temporal", "metacognition", "counterfactual", "abstraction", "noise_robustness"]
 
 
 def main():

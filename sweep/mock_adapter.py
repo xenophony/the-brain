@@ -4,9 +4,12 @@ Returns canned or random responses without loading a real model.
 Use this to develop and test all probes without GPU/model dependency.
 
 Modes:
-  - "random":   random plausible outputs
-  - "perfect":  correct answers detected from prompt content
-  - "terrible": nonsense that should score near 0
+  - "random":       random plausible outputs
+  - "perfect":      correct answers detected from prompt content
+  - "terrible":     nonsense that should score near 0
+  - "sycophantic":  capitulates to pressure, gives inconsistent answers
+  - "overconfident": returns confidence 9 regardless of correctness
+  - "fragile":      correct on clean prompts (Version A), wrong on B/C/D
 """
 
 import random
@@ -31,6 +34,10 @@ class MockAdapter:
             return self._terrible_response(prompt)
         if self.mode == "sycophantic":
             return self._sycophantic_response(prompt)
+        if self.mode == "overconfident":
+            return self._overconfident_response(prompt)
+        if self.mode == "fragile":
+            return self._fragile_response(prompt)
         return self._random_response(prompt)
 
     def get_logprobs(self, prompt, target_tokens=None):
@@ -85,6 +92,10 @@ class MockAdapter:
     def _perfect_response(self, prompt: str) -> str:
         """Detect which probe is calling and return the correct answer."""
         p = prompt.lower()
+
+        # --- Metacognition probe (must be before EQ to avoid digit/0-9 collision) ---
+        if "confidence" in p and "0=guessing" in p:
+            return self._perfect_metacognition(prompt)
 
         # --- Math probe ---
         if "what is 17 * 23" in p:
@@ -174,6 +185,106 @@ class MockAdapter:
         # --- Tool use probe ---
         if "available tools" in p or "select the best tool" in p or "which tool" in p:
             return self._perfect_tool_use(prompt)
+
+        # --- Temporal probe ---
+        if "event chain:" in p:
+            return self._perfect_temporal(prompt)
+        if ("how many days" in p and ("after" in p or "from" in p)
+                and ("alice" in p or "package" in p or "event x" in p or "tom started" in p)):
+            return self._perfect_temporal(prompt)
+        if "timeline consistent or inconsistent" in p:
+            return self._perfect_temporal(prompt)
+        if "would the result be the same" in p or "would they stay" in p:
+            return self._perfect_temporal(prompt)
+        if "is there anything to frame" in p or "can the recipient read" in p:
+            return self._perfect_temporal(prompt)
+
+        # --- Counterfactual probe (before holistic to avoid 'is to' collisions) ---
+        if "gravity were twice" in p:
+            return "faster"
+        if "moon were twice as far" in p:
+            return "weaker"
+        if "air had zero viscosity" in p:
+            return "same"
+        if "no atmosphere" in p and "temperature variation" in p:
+            return "larger"
+        if "ice were denser" in p:
+            return "sink"
+        if "printing press" in p and "never been invented" in p:
+            return "B"
+        if "never developed agriculture" in p:
+            return "B"
+        if "electricity had never" in p:
+            return "B"
+        if "antibiotics had never" in p:
+            return "A"
+        if "internet had never" in p:
+            return "B"
+        if "all cats can fly" in p:
+            return "B"
+        if "water flows uphill" in p:
+            return "A"
+        if "number 3 does not exist" in p:
+            return "B"
+        if "all metals are liquid" in p:
+            return "B"
+        if "do not need sleep" in p:
+            return "B"
+
+        # --- Abstraction probe ---
+        if "dog, cat, and hamster" in p:
+            return "animals"
+        if "red, blue, and green" in p:
+            return "colors"
+        if "addition, subtraction, and multiplication" in p:
+            return "operations"
+        if "happiness, sadness, and anger" in p:
+            return "emotions"
+        if "oak, maple, and pine" in p:
+            return "trees"
+        if "specific example of a mammal" in p:
+            return "dog"
+        if "specific example of a geometric shape" in p:
+            return "circle"
+        if "specific example of a musical instrument" in p:
+            return "piano"
+        if "specific example of a programming language" in p:
+            return "python"
+        if "specific example of a chemical element" in p:
+            return "oxygen"
+        if "vehicle" in p and "red toyota" in p and "more abstract" in p:
+            return "vehicle"
+        if "justice" in p and "court ruling" in p and "more abstract" in p:
+            return "justice"
+        if "pet dog rex" in p and "animal" in p and "more abstract" in p:
+            return "animal"
+        if "'number' or '42'" in p and "more abstract" in p:
+            return "number"
+        if "communication" in p and "phone call" in p and "more abstract" in p:
+            return "communication"
+
+        # --- Noise robustness probe ---
+        if "capital of france" in p or "capital city of france" in p:
+            return "Paris"
+        if "7 * 8" in p or "7 times 8" in p or "seven and eight" in p:
+            return "56"
+        if ("chemical symbol" in p and "'o'" in p) or "symbol o" in p:
+            return "oxygen"
+        if "hexagon" in p and "sides" in p:
+            return "6"
+        if "largest planet" in p or "biggest planet" in p:
+            return "Jupiter"
+        if ("freezing point" in p or "does water freeze" in p) and ("water" in p or "celsius" in p):
+            return "0"
+        if ("mixing red and blue" in p or "combining red and blue" in p
+                or "red + blue" in p):
+            return "purple"
+        if "how many continents" in p or "number of continents" in p:
+            return "7"
+        if "table salt" in p or "sodium chloride" in p or "formula for salt" in p:
+            return "NaCl"
+        if "square root of 144" in p or "sqrt of 144" in p:
+            return "12"
 
         # --- Holistic/analogy probe ---
         if "is to" in p and ("as" in p or "analogy" in p):
@@ -534,3 +645,177 @@ class MockAdapter:
         if "longer than 6 letters" in p and "3 words" in p and "lowercase" in p:
             return "electric magnetic function"
         return "HELLO WORLD 42!"
+
+    def _perfect_temporal(self, prompt: str) -> str:
+        """Return correct answers for temporal probe questions."""
+        p = prompt.lower()
+        # Type A: causal chain — answer is always "no"
+        if "event chain:" in p and "could" in p:
+            return "no"
+        # Type B: relative time
+        if "alice arrived on monday" in p:
+            return "1"
+        if "package was shipped" in p:
+            return "9"
+        if "event x happened on january 10" in p:
+            return "10"
+        if "tom started a project" in p:
+            return "20"
+        # Type C: temporal contradiction
+        if "graduated from college in 2015" in p and "phd in 2014" in p:
+            return "inconsistent"
+        if "first customer arrived at 9:15" in p and "empty until 10" in p:
+            return "inconsistent"
+        if "maria was born in 1990" in p:
+            return "consistent"
+        if "building was demolished in march" in p and "renovations were completed in april" in p:
+            return "inconsistent"
+        # Type D: counterfactual temporal — answer is always "no"
+        if "peeled before boiling" in p or "folded before drying" in p:
+            return "no"
+        if "framed before being taken" in p or "sealed before writing" in p:
+            return "no"
+        return "no"
+
+    def _perfect_metacognition(self, prompt: str) -> str:
+        """Return correct answer with high confidence for metacognition probe."""
+        p = prompt.lower()
+        # Easy questions — correct + high confidence
+        if "2 + 2" in p:
+            return "4\n9"
+        if "color" in p and "sky" in p:
+            return "blue\n9"
+        if "legs" in p and "dog" in p:
+            return "4\n9"
+        if "planet" in p and "live on" in p:
+            return "Earth\n9"
+        if "boiling point" in p and "water" in p:
+            return "100\n9"
+        # Medium questions
+        if "square root of 169" in p:
+            return "13\n8"
+        if "countries" in p and "africa" in p:
+            return "54\n7"
+        if "atomic number" in p and "iron" in p:
+            return "26\n8"
+        if "berlin wall" in p:
+            return "1989\n8"
+        if "sulfuric acid" in p:
+            return "H2SO4\n8"
+        # Obscure — correct + moderate confidence
+        if "burkina faso" in p:
+            return "Ouagadougou\n6"
+        if "westphalia" in p:
+            return "1648\n5"
+        if "bismuth-209" in p:
+            return "10^19\n4"
+        if "14th president" in p:
+            return "Franklin Pierce\n5"
+        if "deepest point" in p:
+            return "10994\n5"
+        # Trick questions — correct + moderate confidence
+        if "subtract 5 from 25" in p:
+            return "1\n6"
+        if "take away 2" in p:
+            return "2\n7"
+        if "all but 8 die" in p:
+            return "8\n7"
+        if "pound of feathers" in p:
+            return "same\n8"
+        if "how many months" in p and "28 days" in p:
+            return "12\n7"
+        return "42\n5"
+
+    def _overconfident_response(self, prompt: str) -> str:
+        """Overconfident mode: always confidence 9, but often wrong answers."""
+        p = prompt.lower()
+        # For metacognition probe: always returns confidence 9
+        if "confidence" in p and "0-9" in p:
+            # Get the perfect answer but sometimes give wrong ones
+            # Easy: correct. Medium/obscure/trick: often wrong.
+            if "2 + 2" in p:
+                return "4\n9"
+            if "color" in p and "sky" in p:
+                return "blue\n9"
+            if "legs" in p and "dog" in p:
+                return "4\n9"
+            if "planet" in p and "live on" in p:
+                return "Earth\n9"
+            if "boiling point" in p and "water" in p:
+                return "100\n9"
+            # Wrong answers with confidence 9
+            if "square root of 169" in p:
+                return "12\n9"
+            if "countries" in p and "africa" in p:
+                return "48\n9"
+            if "atomic number" in p and "iron" in p:
+                return "28\n9"
+            if "berlin wall" in p:
+                return "1991\n9"
+            if "sulfuric acid" in p:
+                return "HCl\n9"
+            if "burkina faso" in p:
+                return "Lagos\n9"
+            if "westphalia" in p:
+                return "1776\n9"
+            if "bismuth-209" in p:
+                return "10^5\n9"
+            if "14th president" in p:
+                return "Lincoln\n9"
+            if "deepest point" in p:
+                return "5000\n9"
+            if "subtract 5 from 25" in p:
+                return "5\n9"
+            if "take away 2" in p:
+                return "1\n9"
+            if "all but 8 die" in p:
+                return "7\n9"
+            if "pound of feathers" in p:
+                return "bricks\n9"
+            if "how many months" in p and "28 days" in p:
+                return "1\n9"
+            return "42\n9"
+        # For other probes, behave like perfect
+        return self._perfect_response(prompt)
+
+    # Version A (clean) prompts from noise_robustness probe for fragile mode
+    _CLEAN_PROMPTS = {
+        "what is the capital of france? answer with one word.",
+        "what is 7 * 8? answer with only the number.",
+        "what element has the chemical symbol 'o'? answer with one word.",
+        "how many sides does a hexagon have? answer with only the number.",
+        "what is the largest planet in our solar system? answer with one word.",
+        "what is the freezing point of water in celsius? answer with only the number.",
+        "what color do you get by mixing red and blue? answer with one word.",
+        "how many continents are there on earth? answer with only the number.",
+        "what is the chemical formula for table salt? answer in chemical notation.",
+        "what is the square root of 144? answer with only the number.",
+    }
+
+    def _fragile_response(self, prompt: str) -> str:
+        """Fragile mode: correct on clean (Version A) prompts, wrong on B/C/D."""
+        p = prompt.strip().lower()
+
+        # If it exactly matches a known clean prompt, give correct answer
+        if p in self._CLEAN_PROMPTS:
+            return self._perfect_response(prompt)
+
+        # Any other noise_robustness prompt variant: give wrong answer
+        # Detect if this is a noise_robustness probe question by keywords
+        nr_keywords = [
+            "capital of france", "capital city of france",
+            "7 * 8", "7 times 8", "seven and eight",
+            "symbol o", "symbol 'o'", "chemical symbol",
+            "hexagon", "sides",
+            "largest planet", "biggest planet",
+            "freezing point", "water freeze",
+            "red and blue", "red + blue", "mixing red",
+            "continents",
+            "table salt", "sodium chloride", "formula for salt",
+            "square root of 144", "sqrt of 144",
+        ]
+        if any(kw in p for kw in nr_keywords):
+            return "banana"
+
+        # For non-noise-robustness probes, behave like perfect
+        return self._perfect_response(prompt)

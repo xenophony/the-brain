@@ -346,6 +346,123 @@ def generate_overlay_analysis(
     print("Saved optimized_path_recommendations.json")
 
 
+def generate_research_report(results_path: str, output_dir: str) -> str:
+    """Generate CIRCUIT_REPORT.md summarizing all analyses.
+
+    Runs compound analysis and safety analysis, then compiles a markdown
+    report with the most significant findings.
+
+    Args:
+        results_path: Path to sweep_results.json.
+        output_dir: Directory for output files.
+
+    Returns:
+        Path to the generated CIRCUIT_REPORT.md file.
+    """
+    from analysis.compound import generate_compound_report
+    from analysis.path_optimizer import PathOptimizer
+    from analysis.taxonomy import SAFETY, get_all_probe_names
+
+    results = load_results(results_path)
+    if not results:
+        return ""
+
+    out = Path(output_dir)
+    out.mkdir(parents=True, exist_ok=True)
+
+    # Infer dimensions
+    max_j = max(r["j"] for r in results if r["j"] > 0) if any(r["j"] > 0 for r in results) else 1
+    n_layers = max_j
+    probe_names = list(results[0]["probe_scores"].keys()) if results else []
+    matrices = {p: build_delta_matrix(results, p, n_layers) for p in probe_names}
+
+    # Run compound analysis
+    compound = generate_compound_report(results_path, output_dir)
+
+    # Run safety analysis
+    safety = safety_analysis(results_path, output_dir)
+
+    # Build path optimizer
+    optimizer = PathOptimizer(compound, n_layers)
+    default_weights = {p: 1.0 for p in probe_names}
+    default_path = optimizer.recommend_path(default_weights)
+    router_features = optimizer.recommend_router_features(matrices)
+
+    # Generate report
+    lines = [
+        "# Circuit Analysis Report",
+        "",
+        f"Model layers: {n_layers}",
+        f"Probes evaluated: {', '.join(probe_names)}",
+        f"Total configs swept: {len(results)}",
+        "",
+    ]
+
+    # Top 5 synergistic circuits
+    lines.append("## Top Synergistic Circuits")
+    lines.append("")
+    syn = compound.get("synergistic", [])[:5]
+    if syn:
+        for s in syn:
+            lines.append(f"- **({s['i']},{s['j']})**: {s['n_improving']} probes improve "
+                         f"(mean delta={s['mean_delta']:.4f}): {', '.join(s['improving_probes'])}")
+    else:
+        lines.append("No synergistic circuits found above threshold.")
+    lines.append("")
+
+    # Top 5 antagonistic pairs
+    lines.append("## Top Antagonistic Pairs")
+    lines.append("")
+    ant = compound.get("antagonistic", [])[:5]
+    if ant:
+        for a in ant:
+            lines.append(f"- **({a['i']},{a['j']})**: improves {', '.join(a['improved'])} "
+                         f"but degrades {', '.join(a['degraded'])} "
+                         f"(conflict={a['conflict_magnitude']:.4f})")
+    else:
+        lines.append("No antagonistic circuits found.")
+    lines.append("")
+
+    # Safety findings
+    lines.append("## Safety Findings")
+    lines.append("")
+    if safety:
+        n_integrity = len(safety.get("integrity_circuit_candidates", []))
+        n_deception = len(safety.get("deception_risk_regions", []))
+        n_syco = len(safety.get("sycophancy_circuit_candidates", []))
+        n_inst = len(safety.get("instruction_resistance_regions", []))
+        lines.append(f"- Integrity circuits: {n_integrity} candidates")
+        lines.append(f"- Deception risk regions: {n_deception}")
+        lines.append(f"- Sycophancy circuits: {n_syco} candidates")
+        lines.append(f"- Instruction resistance: {n_inst} regions")
+    else:
+        lines.append("Safety analysis not available (insufficient safety probes).")
+    lines.append("")
+
+    # Recommended default path
+    lines.append("## Recommended Default Path")
+    lines.append("")
+    lines.append(f"Equal-weight path ({len(default_path)} steps): `{default_path}`")
+    lines.append("")
+
+    # Top routing features
+    lines.append("## Top Routing Feature Layers")
+    lines.append("")
+    top_features = list(router_features.items())[:5]
+    if top_features:
+        for layer, var in top_features:
+            lines.append(f"- Layer {layer}: variance={var:.6f}")
+    lines.append("")
+
+    report_text = "\n".join(lines)
+    report_path = out / "CIRCUIT_REPORT.md"
+    with open(report_path, "w") as f:
+        f.write(report_text)
+
+    print(f"Saved CIRCUIT_REPORT.md to {output_dir}")
+    return str(report_path)
+
+
 def safety_analysis(results_path: str, output_dir: str, threshold: float = 0.03):
     """
     Analyze safety-relevant probe interactions across (i,j) configs.
