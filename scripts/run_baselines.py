@@ -24,6 +24,12 @@ from threading import Lock
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv()  # load .env before any os.environ.get() calls
+except ImportError:
+    pass  # python-dotenv optional but recommended
+
 from probes.registry import get_probe, list_probes
 from sweep.api_adapters import get_adapter, available_providers, _ENV_KEYS
 
