@@ -23,7 +23,7 @@ PRICING = {  # (input_per_1M, output_per_1M) USD, updated 2026-03
     "llama-70b": (0.40, 0.40),     # OpenRouter Llama 3.3 70B
     "qwen-30b": (0.30, 0.30),      # OpenRouter Qwen 32B
     "claude-sonnet": (3.00, 15.00), # OpenRouter Claude Sonnet 4
-    "gemini-3.1-pro": (2.50, 15.00),  # Google AI Gemini 3.1 Pro Preview
+    "gpt-5": (2.00, 8.00),         # OpenRouter GPT-5
 }
 
 # Map model registry names to pricing keys (direct mapping now)
@@ -32,7 +32,7 @@ _PRICING_KEY = {
     "llama-70b": "llama-70b",
     "qwen-30b": "qwen-30b",
     "claude-sonnet": "claude-sonnet",
-    "gemini-3.1-pro": "gemini-3.1-pro",
+    "gpt-5": "gpt-5",
 }
 
 # Probe token estimates
@@ -41,7 +41,7 @@ EST_ITEMS_PER_PROBE = 15
 EST_INPUT_TOKENS_PER_ITEM = 200
 EST_OUTPUT_TOKENS_PER_ITEM = 15
 
-ALL_MODELS = ["llama-8b", "llama-70b", "qwen-30b", "claude-sonnet", "gemini-3.1-pro"]
+ALL_MODELS = ["llama-8b", "llama-70b", "qwen-30b", "claude-sonnet", "gpt-5"]
 
 
 # ---------------------------------------------------------------------------

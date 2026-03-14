@@ -421,11 +421,13 @@ class OpenRouterAdapter(BaseAPIAdapter):
         error_msg = None
         response_text = ""
         try:
-            # Gemini 2.5 Pro uses "thinking" mode — thinking tokens count against
-            # max_tokens, so we need much more headroom for the actual answer.
+            # Thinking/reasoning models use tokens for internal reasoning before
+            # producing output. Increase max_tokens to give headroom.
             effective_max = max_new_tokens
             if "gemini" in self.model.lower():
                 effective_max = max(max_new_tokens * 8, 1024)
+            elif "gpt-5" in self.model.lower() or "o1" in self.model.lower() or "o3" in self.model.lower():
+                effective_max = max(max_new_tokens * 4, 512)
 
             def _call():
                 return self.client.chat.completions.create(
