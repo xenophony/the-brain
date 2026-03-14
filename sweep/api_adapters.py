@@ -234,9 +234,12 @@ class GeminiAdapter(BaseAPIAdapter):
         error_msg = None
         response_text = ""
         try:
+            # Gemini 2.5+ uses thinking tokens that count against max_output_tokens
+            effective_max = max(max_new_tokens * 8, 1024)
+
             def _call():
                 generation_config = self._genai.types.GenerationConfig(
-                    max_output_tokens=max_new_tokens,
+                    max_output_tokens=effective_max,
                     temperature=temperature,
                 )
                 return self._model_obj.generate_content(
@@ -409,11 +412,17 @@ class OpenRouterAdapter(BaseAPIAdapter):
         error_msg = None
         response_text = ""
         try:
+            # Gemini 2.5 Pro uses "thinking" mode — thinking tokens count against
+            # max_tokens, so we need much more headroom for the actual answer.
+            effective_max = max_new_tokens
+            if "gemini" in self.model.lower():
+                effective_max = max(max_new_tokens * 8, 1024)
+
             def _call():
                 return self.client.chat.completions.create(
                     model=self.model,
                     messages=[{"role": "user", "content": prompt}],
-                    max_tokens=max_new_tokens,
+                    max_tokens=effective_max,
                     temperature=temperature,
                 )
             resp = _retry_with_backoff(_call, timeout_seconds=self.request_timeout)

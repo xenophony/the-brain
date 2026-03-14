@@ -299,3 +299,10 @@
 [13:00] DONE: Generated CALIBRATION_REPORT.md from current results
 [13:00] NOTE: High orthogonality correlations (r>0.9 everywhere) are artifacts of gemini-2.5-pro scoring ~0 on all probes. Remove gemini from correlation analysis for meaningful orthogonality.
 [13:00] NOTE: spatial_pathfinding has LOW RANGE (0.094) — models genuinely can't pathfind. Keep for sweep (may show signal with circuit manipulation) but don't rely on it for baseline calibration.
+
+## Gemini Thinking Token Fix
+[13:30] DONE: Diagnosed Gemini 2.5 Pro scoring 0 on most probes — "thinking" mode consumes max_tokens budget, leaving no room for actual answer
+[13:30] DONE: Evidence: responses truncated at 35-48 chars ("Of course, let's think through this") with empty direct answers
+[13:30] DONE: Fix: multiply max_tokens by 8x (min 1024) for Gemini models in both OpenRouterAdapter and GeminiAdapter
+[13:30] DONE: All 201 tests passing
+[13:30] NEXT: Rerun gemini-2.5-pro on all probes with --no-resume
