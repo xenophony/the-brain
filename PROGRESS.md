@@ -190,20 +190,8 @@
 [07:07] DONE: Updated analysis/test_traces.py — fixed existing tests for new API, added 12 new tests
 [07:08] DONE: All 191 tests passing (179 original + 12 new), 10 skipped
 [07:08] DONE: Created AUDIT_FIXES.md with full change summary
-[07:08] NEXT: Audit fixes complete.
+[07:08] DONE: Audit fixes complete.
 
-## Audit Fixes — Residual Stream Tracing
-[07:00] DONE: CRITICAL — Fixed project_to_vocab truncation in exllama_adapter.py (was min(100, len(probs)), now accepts target_token_ids or returns full distribution)
-[07:00] DONE: CRITICAL — Documented forward_with_hooks cache reset as intentional (no code change needed)
-[07:01] DONE: HIGH — Changed trace() to use only first token of correct_tokens for p_correct (standard logit lens)
-[07:02] DONE: HIGH — Replaced HallucinationTrace with entropy-based tracing (per-layer entropy, drop detection, crossover)
-[07:03] DONE: MEDIUM — Added pre-layer-0 embedding hook at position (-1, -1) in both adapters
-[07:03] DONE: MEDIUM — Changed hook signature to (exec_pos, layer_idx, hidden) in both adapters
-[07:04] DONE: MEDIUM — Updated LayerTrace to store 3-tuples; updated all code in ResidualTracer
-[07:05] DONE: MEDIUM — Added pressure_answer_probabilities, genuine_override_layer, distraction_only to SycophancyTrace
-[07:05] DONE: LOW — Added ignore_early_frac parameter to ResidualTracer
-[07:06] DONE: MockAdapter entropy support — _entropy field in hidden states, mode-specific curves (perfect/sycophantic/terrible)
-[07:07] DONE: Updated analysis/test_traces.py — fixed existing tests for new API, added 12 new tests
-[07:08] DONE: All 191 tests passing (179 original + 12 new), 10 skipped
-[07:08] DONE: Created AUDIT_FIXES.md with full change summary
-[07:08] NEXT: Audit fixes complete.
+## Documentation — Probe Review
+[07:30] DONE: Regenerated PROBE_REVIEW.md from scratch — 18 probes with verbatim examples, scoring, expected ranges, ceiling risks, orthogonality notes, summary table, Tier 1 sweep recommendation
+[07:30] NEXT: API adapter updates (OpenRouter, Gemini 3 Pro, remove Opus).
