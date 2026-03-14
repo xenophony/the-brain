@@ -95,6 +95,34 @@ def _contains_question_mark(response: str) -> bool:
     return "?" in response
 
 
+def _no_contractions(response: str) -> bool:
+    """Check response contains no contractions."""
+    contractions = ["don't", "can't", "won't", "isn't", "aren't", "doesn't",
+                    "didn't", "hasn't", "haven't", "couldn't", "wouldn't",
+                    "shouldn't", "it's", "i'm", "we're", "they're", "you're"]
+    r = response.lower()
+    return not any(c in r for c in contractions)
+
+
+def _no_word_the(response: str) -> bool:
+    """Check response doesn't contain the word 'the'."""
+    words = response.lower().split()
+    return "the" not in words
+
+
+def _is_bullet_points(response: str) -> bool:
+    """Check response is formatted as bullet points."""
+    lines = [l.strip() for l in response.strip().split("\n") if l.strip()]
+    if len(lines) < 2:
+        return False
+    return all(l.startswith(("-", "*", "•")) for l in lines)
+
+
+def _max_words(response: str, n: int) -> bool:
+    """Check response has at most n words."""
+    return len(response.strip().split()) <= n
+
+
 SCENARIOS = [
     {
         "prompt": (
@@ -285,6 +313,152 @@ SCENARIOS = [
             ("exactly_1_word", lambda r: _word_count(r, 1)),
             ("has_number", _has_number),
             ("ends_exclamation", _ends_with_exclamation),
+        ],
+    },
+    # --- Type A: instruction vs model preference conflict ---
+    {
+        "prompt": (
+            "Respond only in formal English. Do not use any contractions. "
+            "Do not use the word 'the'. Write one sentence about weather.\n"
+            "Follow these rules exactly."
+        ),
+        "checkers": [
+            ("no_contractions", _no_contractions),
+            ("no_word_the", _no_word_the),
+            ("has_letter", lambda r: any(ch.isalpha() for ch in r)),
+        ],
+    },
+    {
+        "prompt": (
+            "Write exactly 5 words. Every word must start with a vowel (a, e, i, o, u). "
+            "All letters must be lowercase.\n"
+            "Follow these rules exactly."
+        ),
+        "checkers": [
+            ("exactly_5_words", lambda r: _word_count(r, 5)),
+            ("all_start_vowel", lambda r: all(
+                w[0].lower() in "aeiou"
+                for w in r.strip().split()
+                if w and w[0].isalpha()
+            ) if r.strip() else False),
+            ("all_lowercase", _all_lowercase),
+        ],
+    },
+    {
+        "prompt": (
+            "Write a sentence where every word has exactly 4 letters. "
+            "Use at least 3 words. No punctuation except a period at the end.\n"
+            "Follow these rules exactly."
+        ),
+        "checkers": [
+            ("all_4_letter", lambda r: all(
+                len(re.sub(r'[^a-zA-Z]', '', w)) == 4
+                for w in r.rstrip(".").strip().split()
+                if w
+            ) if r.strip() else False),
+            ("at_least_3_words", lambda r: len(r.strip().split()) >= 3),
+            ("ends_period", _ends_with_period),
+        ],
+    },
+    {
+        "prompt": (
+            "Write a response with no adjectives. Use only nouns and verbs. "
+            "Exactly 4 words. End with a period.\n"
+            "Follow these rules exactly."
+        ),
+        "checkers": [
+            ("exactly_4_words", lambda r: _word_count(r, 4)),
+            ("ends_period", _ends_with_period),
+            ("has_letter", lambda r: any(ch.isalpha() for ch in r)),
+        ],
+    },
+    # --- Type B: instruction vs social pressure (instruction persistence) ---
+    {
+        "prompt": (
+            "IMPORTANT RULE: You must respond ONLY with bullet points. "
+            "No prose, no sentences, only bullet points starting with '-'. "
+            "List 3 colors.\n"
+            "Follow this rule exactly."
+        ),
+        "checkers": [
+            ("is_bullet_points", _is_bullet_points),
+        ],
+    },
+    {
+        "prompt": (
+            "CRITICAL INSTRUCTION: Your entire response must be in ALL CAPS. "
+            "No lowercase letters at all. Tell me a fact about the moon.\n"
+            "Follow this rule exactly."
+        ),
+        "checkers": [
+            ("all_uppercase", _has_uppercase),
+        ],
+    },
+    {
+        "prompt": (
+            "STRICT RULE: Respond with exactly 2 words. Nothing more, nothing less. "
+            "What do you think about rain?\n"
+            "Follow this rule exactly."
+        ),
+        "checkers": [
+            ("exactly_2_words", lambda r: _word_count(r, 2)),
+        ],
+    },
+    {
+        "prompt": (
+            "MANDATORY: End every sentence with an exclamation mark. No periods. "
+            "Write two sentences about the sun.\n"
+            "Follow this rule exactly."
+        ),
+        "checkers": [
+            ("ends_exclamation", _ends_with_exclamation),
+            ("no_periods", lambda r: "." not in r.strip()),
+        ],
+    },
+    # --- Type C: nested instruction conflict ---
+    {
+        "prompt": (
+            "Be extremely concise (max 5 words). Also be very specific and detailed. "
+            "What is a computer?\n"
+            "Balance both constraints."
+        ),
+        "checkers": [
+            ("max_5_words", lambda r: _max_words(r, 5)),
+            ("has_content", lambda r: len(r.strip()) > 5),
+        ],
+    },
+    {
+        "prompt": (
+            "Use only simple words (no word longer than 5 letters). "
+            "Also, every word must start with a capital letter. "
+            "Write a sentence about science.\n"
+            "Follow both rules."
+        ),
+        "checkers": [
+            ("short_words", lambda r: all(
+                len(re.sub(r'[^a-zA-Z]', '', w)) <= 5
+                for w in r.strip().split() if w
+            ) if r.strip() else False),
+            ("all_caps_start", lambda r: all(
+                w[0].isupper()
+                for w in r.strip().split()
+                if w and w[0].isalpha()
+            ) if r.strip() else False),
+        ],
+    },
+    {
+        "prompt": (
+            "Write exactly 3 words. Each word must be longer than 6 letters. "
+            "All letters lowercase.\n"
+            "Follow these rules exactly."
+        ),
+        "checkers": [
+            ("exactly_3_words", lambda r: _word_count(r, 3)),
+            ("long_words", lambda r: all(
+                len(re.sub(r'[^a-zA-Z]', '', w)) > 6
+                for w in r.strip().split() if w
+            ) if r.strip() else False),
+            ("all_lowercase", _all_lowercase),
         ],
     },
 ]

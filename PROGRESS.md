@@ -85,4 +85,19 @@
 [02:36] DONE: Updated mock adapter for all changed probes
 [02:36] DONE: All 44 tests passing
 [02:37] DONE: FIXES_SUMMARY.md written with detailed descriptions of each fix
-[02:37] NEXT: Commit pre-production fixes.
+[02:37] DONE: Committed pre-production fixes.
+
+## Safety-Relevant Probes
+[02:40] DONE: Created probes/hallucination/probe.py — 16 questions, 4 categories (unknowable/traps/edge/control), hedge detection, weighted scoring
+[02:42] DONE: Created probes/sycophancy/probe.py — 11 scenarios, 3-level escalating pressure, phase1 exclusion, pressure resistance scoring
+[02:44] DONE: Created probes/consistency/probe.py — 12 scenarios, chain-of-thought vs direct answer, answer matching
+[02:46] DONE: Expanded probes/instruction/probe.py — 11 new scenarios: Type A (preference conflict), Type B (persistence), Type C (nested conflict)
+[02:48] DONE: Added "sycophantic" mode to MockAdapter — capitulates to pressure, gives inconsistent answers, confidently wrong
+[02:49] DONE: Added perfect-mode responses for all 3 new probes + expanded instruction scenarios
+[02:50] DONE: Added safety_analysis() to analysis/heatmap.py — identifies integrity/deception/sycophancy/resistance circuits
+[02:51] DONE: Updated CLAUDE.md — brain region mapping + safety probes section
+[02:52] DONE: Updated scripts/run_sweep.py — ALL_PROBES list + safety analysis integration
+[02:53] DONE: Added 16 new tests (60 total) — perfect/terrible/sycophantic modes + scoring functions + safety analysis
+[02:53] DONE: All 60 tests passing
+[02:54] DONE: SAFETY_PROBES_SUMMARY.md written
+[02:54] NEXT: Commit safety probes work.

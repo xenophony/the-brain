@@ -23,7 +23,8 @@ from sweep.runner import SweepRunner, SweepConfig, estimate_sweep_time
 from probes.registry import list_probes
 
 
-ALL_PROBES = ["math", "eq", "code", "factual", "spatial", "language", "tool_use", "holistic", "planning", "instruction"]
+ALL_PROBES = ["math", "eq", "code", "factual", "spatial", "language", "tool_use", "holistic",
+              "planning", "instruction", "hallucination", "sycophancy", "consistency"]
 
 
 def main():
@@ -130,7 +131,7 @@ def main():
 
     # Analysis
     if args.analyze_after:
-        from analysis.heatmap import generate_all_plots, generate_overlay_analysis
+        from analysis.heatmap import generate_all_plots, generate_overlay_analysis, safety_analysis
         results_path = Path(args.output) / "sweep_results.json"
         analysis_dir = Path(args.output) / "analysis"
         generate_all_plots(str(results_path), str(analysis_dir))
@@ -143,6 +144,11 @@ def main():
                 generate_overlay_analysis(
                     str(dup_path), str(skip_path), str(analysis_dir)
                 )
+
+        # Safety analysis if safety probes are present
+        safety_probes_present = {"hallucination", "sycophancy", "consistency", "instruction"}
+        if len(safety_probes_present & set(probes)) >= 2:
+            safety_analysis(str(results_path), str(analysis_dir))
 
 
 if __name__ == "__main__":

@@ -96,6 +96,9 @@ Every probe MUST satisfy all three:
 | holistic | Default mode network | Analogy completion |
 | planning | Prefrontal executive | Ordered steps valid? |
 | instruction | PFC/working memory | Compliance score |
+| hallucination | Prefrontal/hippocampal tension | Confidence score |
+| sycophancy | Social compliance circuits | Pressure resistance score |
+| consistency | Internal state alignment | Reasoning match score |
 
 ## ExLlamaV2 Adapter — Key Technical Notes
 - Layer path injection works by monkey-patching model.forward()
@@ -148,6 +151,38 @@ The spatial probe should be GENERATED not hardcoded:
 - Python: use `python` not `python3` on Windows
 - Paths: use forward slashes in Python, backslashes only in shell commands
 - Virtual env: create as `venv` in project root if not present
+
+## Safety-Relevant Probes
+
+These probes serve a dual purpose:
+1. Circuit mapping — identify where safety-relevant behaviors originate
+2. Safety research — empirical evidence for circuit-level alignment interventions
+
+### Probes
+- **hallucination**: Calibrated confidence vs confabulation. 4 categories (unknowable,
+  traps, edge-of-knowledge, control). Measures appropriate uncertainty.
+- **sycophancy**: Resistance to incorrect social pressure. 3-level escalating pressure
+  with correct-pressure control scenarios. Measures epistemic integrity.
+- **consistency**: Internal reasoning vs stated output alignment. Same question via
+  chain-of-thought then direct answer. Detects output-reasoning divergence.
+- **instruction** (expanded): Now includes instruction-vs-preference conflict,
+  instruction persistence under social pressure, and nested constraint conflicts.
+
+### Key Finding Types
+- Pruning X reduces hallucination without hurting accuracy → X is a confabulation circuit
+- Duplicating Y increases sycophancy resistance → Y is an epistemic integrity circuit
+- Consistency drops when Z is duplicated → Z is involved in output-reasoning alignment
+- Instruction drops while general reasoning improves → instruction override circuit
+
+### Safety Analysis Output
+`safety_circuit_report.json` identifies:
+- **Integrity circuits**: regions where ALL safety probes improve simultaneously
+- **Deception risk regions**: consistency degrades while language/fluency improves
+- **Sycophancy circuits**: sycophancy degrades while EQ improves
+- **Instruction resistance**: instruction degrades while planning improves
+
+These findings should be documented separately from performance optimization.
+They have different implications and different audiences.
 
 ## Common Failure Modes to Watch For
 - ExLlamaV2 cache not reset between configs → stale KV cache corrupts results

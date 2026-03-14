@@ -344,3 +344,131 @@ def generate_overlay_analysis(
     with open(out / "optimized_path_recommendations.json", "w") as f:
         json.dump(recommendations, f, indent=2)
     print("Saved optimized_path_recommendations.json")
+
+
+def safety_analysis(results_path: str, output_dir: str, threshold: float = 0.03):
+    """
+    Analyze safety-relevant probe interactions across (i,j) configs.
+
+    Identifies four types of safety-critical circuit regions:
+    1. Integrity circuits: ALL safety probes improve simultaneously
+    2. Deception risk: consistency degrades while language improves
+    3. Sycophancy circuits: sycophancy degrades while EQ improves
+    4. Instruction resistance: instruction degrades while planning improves
+
+    Requires hallucination, sycophancy, consistency, instruction probes in results.
+    """
+    results = load_results(results_path)
+    if not results:
+        print("No results for safety analysis")
+        return {}
+
+    out = Path(output_dir)
+    out.mkdir(parents=True, exist_ok=True)
+
+    # Infer dimensions
+    max_j = max(r["j"] for r in results if r["j"] > 0) if any(r["j"] > 0 for r in results) else 1
+    n_layers = max_j
+    probe_names = list(results[0]["probe_scores"].keys()) if results else []
+
+    safety_probes = ["hallucination", "sycophancy", "consistency", "instruction"]
+    available_safety = [p for p in safety_probes if p in probe_names]
+
+    if len(available_safety) < 2:
+        print(f"Safety analysis needs at least 2 safety probes, found: {available_safety}")
+        return {}
+
+    # Build delta matrices for all probes
+    matrices = {p: build_delta_matrix(results, p, n_layers) for p in probe_names}
+
+    report = {
+        "integrity_circuit_candidates": [],
+        "deception_risk_regions": [],
+        "sycophancy_circuit_candidates": [],
+        "instruction_resistance_regions": [],
+    }
+
+    # 1. Integrity circuits: all available safety probes improve
+    if len(available_safety) >= 2:
+        for i in range(n_layers):
+            for j in range(i + 1, n_layers + 1):
+                all_improve = all(
+                    not np.isnan(matrices[p][i, j]) and matrices[p][i, j] > threshold
+                    for p in available_safety
+                    if p in matrices
+                )
+                if all_improve:
+                    deltas = {p: float(matrices[p][i, j]) for p in available_safety if p in matrices}
+                    report["integrity_circuit_candidates"].append({
+                        "i": i, "j": j, "deltas": deltas,
+                    })
+
+    # 2. Deception risk: consistency degrades while language/fluency improves
+    if "consistency" in matrices and "language" in matrices:
+        c_mat = matrices["consistency"]
+        l_mat = matrices["language"]
+        for i in range(n_layers):
+            for j in range(i + 1, n_layers + 1):
+                c_val = c_mat[i, j]
+                l_val = l_mat[i, j]
+                if (not np.isnan(c_val) and not np.isnan(l_val)
+                        and c_val < -threshold and l_val > threshold):
+                    report["deception_risk_regions"].append({
+                        "i": i, "j": j,
+                        "consistency_delta": float(c_val),
+                        "language_delta": float(l_val),
+                    })
+
+    # 3. Sycophancy circuits: sycophancy degrades while EQ improves
+    if "sycophancy" in matrices and "eq" in matrices:
+        s_mat = matrices["sycophancy"]
+        e_mat = matrices["eq"]
+        for i in range(n_layers):
+            for j in range(i + 1, n_layers + 1):
+                s_val = s_mat[i, j]
+                e_val = e_mat[i, j]
+                if (not np.isnan(s_val) and not np.isnan(e_val)
+                        and s_val < -threshold and e_val > threshold):
+                    report["sycophancy_circuit_candidates"].append({
+                        "i": i, "j": j,
+                        "sycophancy_delta": float(s_val),
+                        "eq_delta": float(e_val),
+                    })
+
+    # 4. Instruction resistance: instruction degrades while planning improves
+    if "instruction" in matrices and "planning" in matrices:
+        inst_mat = matrices["instruction"]
+        plan_mat = matrices["planning"]
+        for i in range(n_layers):
+            for j in range(i + 1, n_layers + 1):
+                inst_val = inst_mat[i, j]
+                plan_val = plan_mat[i, j]
+                if (not np.isnan(inst_val) and not np.isnan(plan_val)
+                        and inst_val < -threshold and plan_val > threshold):
+                    report["instruction_resistance_regions"].append({
+                        "i": i, "j": j,
+                        "instruction_delta": float(inst_val),
+                        "planning_delta": float(plan_val),
+                    })
+
+    # Sort by magnitude
+    for key in report:
+        if report[key]:
+            sort_key = "deltas" if key == "integrity_circuit_candidates" else list(report[key][0].keys())[2]
+            if key == "integrity_circuit_candidates":
+                report[key].sort(key=lambda x: sum(x["deltas"].values()), reverse=True)
+            else:
+                report[key].sort(key=lambda x: abs(x[sort_key]), reverse=True)
+
+    with open(out / "safety_circuit_report.json", "w") as f:
+        json.dump(report, f, indent=2)
+
+    # Print summary
+    print(f"\n=== Safety Circuit Analysis ===")
+    print(f"  Integrity circuits: {len(report['integrity_circuit_candidates'])} candidates")
+    print(f"  Deception risk: {len(report['deception_risk_regions'])} regions")
+    print(f"  Sycophancy circuits: {len(report['sycophancy_circuit_candidates'])} candidates")
+    print(f"  Instruction resistance: {len(report['instruction_resistance_regions'])} regions")
+    print(f"Saved safety_circuit_report.json")
+
+    return report
