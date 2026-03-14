@@ -43,14 +43,14 @@ MODEL_REGISTRY = {
     "llama-70b": ("openrouter", "meta-llama/llama-3.3-70b-instruct"),
     "qwen-30b": ("openrouter", "qwen/qwen3-32b"),
     "claude-sonnet": ("openrouter", "anthropic/claude-sonnet-4"),
-    "gemini-3-pro": ("openrouter", "google/gemini-2.5-pro"),
+    "gemini-3-pro": ("openrouter", "google/gemini-3.1-pro-preview"),
 }
 
 FALLBACK_REGISTRY = {
     "llama-8b": ("groq", "llama-3.1-8b-instant"),
     "llama-70b": ("groq", "llama-3.3-70b-versatile"),
     "claude-sonnet": ("claude", "claude-sonnet-4-20250514"),
-    "gemini-3-pro": ("gemini", "gemini-2.5-pro"),
+    "gemini-3-pro": ("gemini", "gemini-3.1-pro-preview"),
 }
 
 ALL_PROBES = [
