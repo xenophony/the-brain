@@ -113,3 +113,14 @@
 [03:30] DONE: Updated CLAUDE.md — brain region mapping table includes 5 new probes
 [03:35] DONE: Added 21 new tests (81 total) — perfect/terrible/overconfident/fragile modes + scoring function unit tests
 [03:35] DONE: All 81 tests passing (60 original + 21 new)
+
+## Baseline API Comparison Infrastructure
+[04:00] DONE: Created sweep/api_adapters.py — BaseAPIAdapter + ClaudeAdapter, GeminiAdapter, GroqAdapter, TogetherAdapter with exponential backoff, API logging, import guards
+[04:05] DONE: Created scripts/run_baselines.py — CLI to run all 18 probes against 5 API models with atomic checkpointing, resume support, dry-run cost estimation
+[04:10] DONE: Created analysis/calibration.py — ceiling/floor effects, dynamic range, orthogonality (Pearson correlation), generates CALIBRATION_REPORT.md
+[04:15] DONE: Created scripts/estimate_cost.py — standalone cost estimator for baselines and sweeps with itemized breakdown
+[04:20] DONE: Created sweep/test_api_adapters.py — 44 tests (34 non-API + 10 API-gated), covers adapters, calibration, cost estimator, model registry validation
+[04:22] DONE: Updated requirements.txt — added anthropic, google-generativeai, groq, together, python-dotenv
+[04:23] DONE: Created .env.example with placeholder API keys
+[04:24] DONE: Created pytest.ini to register custom 'api' mark
+[04:25] DONE: All 140 tests passing (81 original + 34 new non-API + 10 new API-skipped + 15 other existing), 10 skipped (API keys not set)

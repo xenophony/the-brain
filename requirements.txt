@@ -2,3 +2,8 @@ numpy
 matplotlib
 seaborn
 pytest
+anthropic
+google-generativeai
+groq
+together
+python-dotenv
