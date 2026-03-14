@@ -182,20 +182,21 @@ class TestScoringFunctions:
     def test_math_scoring(self):
         from probes.math.probe import score_math
         assert score_math("391", 391) == 1.0
+        assert score_math("17 * 23 = 391", 391) == 1.0  # extracts last number
         assert score_math("392", 391) == 0.9  # <1% error
         assert score_math("banana", 391) == 0.0
 
     def test_factual_scoring(self):
         from probes.factual.probe import score_factual
-        q_num = {"answer": "206", "type": "number"}
-        assert score_factual("206", q_num) == 1.0
-        assert score_factual("207", q_num) == 0.5  # off by one
+        q_num = {"answer": "3422", "type": "number"}
+        assert score_factual("3422", q_num) == 1.0
+        assert score_factual("3423", q_num) == 0.5  # off by one
         assert score_factual("banana", q_num) == 0.0
 
-        q_word = {"answer": "olympus", "type": "word", "alternates": ["olympus mons"]}
-        assert score_factual("Olympus", q_word) == 1.0
-        assert score_factual("Olympus Mons", q_word) == 1.0
-        assert score_factual("mars", q_word) == 0.0
+        q_word = {"answer": "osmium", "type": "word", "alternates": []}
+        assert score_factual("osmium", q_word) == 1.0
+        assert score_factual("Osmium", q_word) == 1.0
+        assert score_factual("iron", q_word) == 0.0
 
     def test_language_scoring(self):
         from probes.language.probe import score_language
@@ -263,13 +264,12 @@ class TestScoringFunctions:
     def test_spatial_probability_density(self):
         from probes.spatial.probe import compute_probability_density, _make_empty_board
         # Simple test: board with one hit should produce non-zero density
+        # Uses only visible board state — no ground truth positions needed
         board = _make_empty_board()
         board[5][5] = 'H'
-        ship_cells = {(5, 5), (5, 6)}
-        placements = [({(5, 5), (5, 6)}, 2)]
-        density = compute_probability_density(board, ship_cells, placements)
+        density = compute_probability_density(board)
         assert len(density) > 0
-        # The cell adjacent to the hit should have density > 0
+        # Cells adjacent to the hit should have higher density
         assert density.get((5, 6), 0) > 0 or density.get((5, 4), 0) > 0
 
 

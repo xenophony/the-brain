@@ -111,19 +111,20 @@ class MockAdapter:
             return "9"
 
         # --- Code probe ---
-        # Return complete function definitions so score_code's reconstruction works
-        if "def double(x):" in prompt:
-            return "def double(x):\n    return x * 2"
-        if "def is_even(n):" in prompt:
-            return "def is_even(n):\n    return n % 2 == 0"
-        if "def max_of_three(a,b,c):" in prompt:
-            return "def max_of_three(a,b,c):\n    return max(a, b, c)"
-        if "def factorial(n):" in prompt:
-            return "def factorial(n):\n    if n <= 1: return 1\n    return n * factorial(n - 1)"
-        if "def reverse_string(s):" in prompt:
-            return "def reverse_string(s):\n    return s[::-1]"
-        if "def count_vowels(s):" in prompt:
-            return "def count_vowels(s):\n    return sum(1 for c in s.lower() if c in 'aeiou')"
+        if "def flatten(lst):" in prompt:
+            return "def flatten(lst):\n    result = []\n    for item in lst:\n        if isinstance(item, list):\n            result.extend(flatten(item))\n        else:\n            result.append(item)\n    return result"
+        if "def lcs(a, b):" in prompt:
+            return "def lcs(a, b):\n    m, n = len(a), len(b)\n    dp = [[0]*(n+1) for _ in range(m+1)]\n    for i in range(1, m+1):\n        for j in range(1, n+1):\n            if a[i-1] == b[j-1]:\n                dp[i][j] = dp[i-1][j-1] + 1\n            else:\n                dp[i][j] = max(dp[i-1][j], dp[i][j-1])\n    return dp[m][n]"
+        if "def balanced(s):" in prompt:
+            return "def balanced(s):\n    stack = []\n    pairs = {')':'(', ']':'[', '}':'{'}\n    for c in s:\n        if c in '([{':\n            stack.append(c)\n        elif c in pairs:\n            if not stack or stack[-1] != pairs[c]:\n                return False\n            stack.pop()\n    return not stack"
+        if "def merge_intervals(intervals):" in prompt:
+            return "def merge_intervals(intervals):\n    if not intervals:\n        return []\n    intervals.sort()\n    merged = [intervals[0]]\n    for s, e in intervals[1:]:\n        if s <= merged[-1][1]:\n            merged[-1][1] = max(merged[-1][1], e)\n        else:\n            merged.append([s, e])\n    return merged"
+        if "def spiral_order(matrix):" in prompt:
+            return "def spiral_order(matrix):\n    result = []\n    while matrix:\n        result += matrix.pop(0)\n        matrix = list(zip(*matrix))[::-1]\n    return [x for x in result]"
+        if "def eval_rpn(tokens):" in prompt:
+            return "def eval_rpn(tokens):\n    stack = []\n    for t in tokens:\n        if t in '+-*/':\n            b, a = stack.pop(), stack.pop()\n            if t == '+': stack.append(a + b)\n            elif t == '-': stack.append(a - b)\n            elif t == '*': stack.append(a * b)\n            else: stack.append(int(a / b))\n        else:\n            stack.append(int(t))\n    return stack[0]"
+        if "def permutations(nums):" in prompt:
+            return "def permutations(nums):\n    if len(nums) <= 1:\n        return [nums[:]]\n    result = []\n    for i in range(len(nums)):\n        rest = nums[:i] + nums[i+1:]\n        for p in permutations(rest):\n            result.append([nums[i]] + p)\n    return result"
 
         # --- EQ probe ---
         # Detect EQ scenarios by emotion keywords and digit request
@@ -135,30 +136,34 @@ class MockAdapter:
             return self._perfect_spatial(prompt)
 
         # --- Factual probe ---
-        if "how many bones" in p and "adult human" in p:
-            return "206"
         if "melting point of tungsten" in p:
             return "3422"
-        if "speed of light" in p and "km/s" in p:
-            return "299792"
-        if "atomic number of gold" in p:
-            return "79"
-        if "tallest mountain" in p and "solar system" in p:
-            return "Olympus"
-        if "deepest ocean trench" in p:
-            return "Mariana"
-        if "half-life of carbon-14" in p:
-            return "5730"
-        if "chromosomes" in p and "human" in p:
-            return "46"
-        if "boiling point of nitrogen" in p:
-            return "-196"
         if "electron" in p and "kev" in p:
             return "511"
-        if "distance" in p and "earth" in p and "moon" in p:
-            return "384400"
-        if "planck" in p and "constant" in p:
-            return "6.626"
+        if "half-life of carbon-14" in p:
+            return "5730"
+        if "boiling point of nitrogen" in p:
+            return "-196"
+        if "moons" in p and "uranus" in p:
+            return "28"
+        if "ionization energy" in p and "hydrogen" in p:
+            return "13.6"
+        if "mohs" in p and "topaz" in p:
+            return "8"
+        if "gallium" in p and "discovered" in p:
+            return "1875"
+        if "capital" in p and "vanuatu" in p:
+            return "Port Vila"
+        if "densest" in p and "element" in p:
+            return "osmium"
+        if "mohs" in p and "hardness" in p and "3" in p:
+            return "calcite"
+        if "lightest noble gas" in p:
+            return "helium"
+        if "largest moon" in p and "neptune" in p:
+            return "triton"
+        if "magnetic flux" in p and "si unit" in p:
+            return "weber"
 
         # --- Language probe ---
         if "grammatical" in p and "ungrammatical" in p:

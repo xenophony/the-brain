@@ -1,8 +1,9 @@
 """
-Factual recall probe — obscure but verifiable facts.
+Factual recall probe — genuinely obscure verifiable facts.
 
-Tests the model's ability to recall precise, non-trivial factual knowledge.
-Answers are numbers or single unambiguous words.
+Questions are calibrated to challenge 30B models: well-known facts
+produce ceiling effects. These require precise recall of specific
+numeric values and uncommon proper nouns.
 
 Output: number or single word.
 Scoring: exact match = 1.0, off-by-one (numbers) = 0.5, else 0.0.
@@ -13,51 +14,10 @@ import re
 from probes.registry import BaseProbe, register_probe
 
 QUESTIONS = [
-    {
-        "prompt": "How many bones are in an adult human body? Answer with only the number.",
-        "answer": "206",
-        "type": "number",
-    },
+    # Genuinely obscure numeric facts
     {
         "prompt": "What is the melting point of tungsten in degrees Celsius? Answer with only the number.",
         "answer": "3422",
-        "type": "number",
-    },
-    {
-        "prompt": "What is the speed of light in km/s (rounded to nearest integer)? Answer with only the number.",
-        "answer": "299792",
-        "type": "number",
-    },
-    {
-        "prompt": "What is the atomic number of gold? Answer with only the number.",
-        "answer": "79",
-        "type": "number",
-    },
-    {
-        "prompt": "What is the tallest mountain in the solar system? Answer with only the name (one word).",
-        "answer": "olympus",
-        "type": "word",
-        "alternates": ["olympus mons"],
-    },
-    {
-        "prompt": "What is the deepest ocean trench on Earth? Answer with only the name (one word).",
-        "answer": "mariana",
-        "type": "word",
-        "alternates": ["mariana trench", "marianas"],
-    },
-    {
-        "prompt": "What is the half-life of carbon-14 in years? Answer with only the number.",
-        "answer": "5730",
-        "type": "number",
-    },
-    {
-        "prompt": "How many chromosomes do humans have (total, not pairs)? Answer with only the number.",
-        "answer": "46",
-        "type": "number",
-    },
-    {
-        "prompt": "What is the boiling point of nitrogen in degrees Celsius? Answer with only the number.",
-        "answer": "-196",
         "type": "number",
     },
     {
@@ -66,14 +26,71 @@ QUESTIONS = [
         "type": "number",
     },
     {
-        "prompt": "What is the average distance from the Earth to the Moon in kilometers? Answer with only the number.",
-        "answer": "384400",
+        "prompt": "What is the half-life of carbon-14 in years? Answer with only the number.",
+        "answer": "5730",
         "type": "number",
     },
     {
-        "prompt": "What is Planck's constant in units of 10^-34 J*s? Answer with only the number (e.g. 6.626).",
-        "answer": "6.626",
+        "prompt": "What is the boiling point of nitrogen in degrees Celsius? Answer with only the number.",
+        "answer": "-196",
         "type": "number",
+    },
+    {
+        "prompt": "How many known moons does Uranus have as of 2024? Answer with only the number.",
+        "answer": "28",
+        "type": "number",
+    },
+    {
+        "prompt": "What is the ionization energy of hydrogen in electron volts? Answer with only the number (2 decimal places).",
+        "answer": "13.6",
+        "type": "number",
+    },
+    {
+        "prompt": "What is the Mohs hardness of topaz? Answer with only the number.",
+        "answer": "8",
+        "type": "number",
+    },
+    {
+        "prompt": "In what year was the element gallium discovered? Answer with only the number.",
+        "answer": "1875",
+        "type": "number",
+    },
+    # Obscure word/name facts
+    {
+        "prompt": "What is the capital of Vanuatu? Answer with only the name (one word).",
+        "answer": "port",
+        "type": "word",
+        "alternates": ["port vila", "vila"],
+    },
+    {
+        "prompt": "What is the densest naturally occurring element? Answer with only the name (one word).",
+        "answer": "osmium",
+        "type": "word",
+        "alternates": [],
+    },
+    {
+        "prompt": "What mineral has Mohs hardness of exactly 3? Answer with only the name (one word).",
+        "answer": "calcite",
+        "type": "word",
+        "alternates": [],
+    },
+    {
+        "prompt": "What is the lightest noble gas? Answer with only the name (one word).",
+        "answer": "helium",
+        "type": "word",
+        "alternates": [],
+    },
+    {
+        "prompt": "What is the largest moon of Neptune? Answer with only the name (one word).",
+        "answer": "triton",
+        "type": "word",
+        "alternates": [],
+    },
+    {
+        "prompt": "What is the SI unit of magnetic flux? Answer with only the name (one word).",
+        "answer": "weber",
+        "type": "word",
+        "alternates": ["wb"],
     },
 ]
 
@@ -85,7 +102,6 @@ def score_factual(response: str, question: dict) -> float:
     if question["type"] == "word":
         expected = question["answer"].lower()
         alternates = [a.lower() for a in question.get("alternates", [])]
-        # Check response contains the expected word
         if expected in response:
             return 1.0
         for alt in alternates:
@@ -93,16 +109,14 @@ def score_factual(response: str, question: dict) -> float:
                 return 1.0
         return 0.0
 
-    # Number type
-    expected_str = question["answer"]
-    # Extract number from response
-    match = re.search(r'-?[\d]+\.?[\d]*', response)
-    if not match:
+    # Number type — extract LAST number from response
+    matches = re.findall(r'-?[\d]+\.?[\d]*', response)
+    if not matches:
         return 0.0
 
     try:
-        got = float(match.group())
-        expected = float(expected_str)
+        got = float(matches[-1])
+        expected = float(question["answer"])
     except ValueError:
         return 0.0
 

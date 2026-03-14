@@ -1,5 +1,9 @@
 """
-Code generation probe — simple function completion scored by unit tests.
+Code generation probe — function completion scored by unit tests.
+
+Challenges are calibrated for 30B models: easy problems produce ceiling
+effects and flat heatmaps. These require algorithmic insight, recursion,
+and multi-step reasoning.
 
 Output: short code snippet. Scored by executing test cases.
 Maps to: cerebellum / motor (sequential procedure) circuits.
@@ -10,74 +14,130 @@ from probes.registry import BaseProbe, register_probe
 
 CHALLENGES = [
     {
-        "prompt": "Write a Python function `double(x)` that returns x*2. Output only the function, no explanation.\n\ndef double(x):",
+        "prompt": (
+            "Write a Python function `flatten(lst)` that deeply flattens a nested list. "
+            "E.g. flatten([1,[2,[3,4],5],6]) returns [1,2,3,4,5,6]. "
+            "Output only the function, no explanation.\n\n"
+            "def flatten(lst):"
+        ),
         "test_cases": [
-            ("double(3)", 6),
-            ("double(0)", 0),
-            ("double(-5)", -10),
+            ("flatten([1,[2,[3,4],5],6])", [1, 2, 3, 4, 5, 6]),
+            ("flatten([[[[1]]]])", [1]),
+            ("flatten([])", []),
+            ("flatten([1,2,3])", [1, 2, 3]),
+            ("flatten([[1,2],[3,[4,[5]]]])", [1, 2, 3, 4, 5]),
         ],
-        "extract_after": "def double(x):",
+        "extract_after": "def flatten(lst):",
     },
     {
-        "prompt": "Write a Python function `is_even(n)` that returns True if n is even, False otherwise. Output only the function.\n\ndef is_even(n):",
+        "prompt": (
+            "Write a Python function `lcs(a, b)` that returns the length of the "
+            "longest common subsequence of two strings. Use dynamic programming. "
+            "Output only the function.\n\n"
+            "def lcs(a, b):"
+        ),
         "test_cases": [
-            ("is_even(4)", True),
-            ("is_even(7)", False),
-            ("is_even(0)", True),
+            ("lcs('abcde', 'ace')", 3),
+            ("lcs('abc', 'abc')", 3),
+            ("lcs('abc', 'def')", 0),
+            ("lcs('', 'abc')", 0),
+            ("lcs('abcbdab', 'bdcab')", 4),
         ],
-        "extract_after": "def is_even(n):",
+        "extract_after": "def lcs(a, b):",
     },
     {
-        "prompt": "Write a Python function `max_of_three(a,b,c)` that returns the largest of three numbers. Output only the function.\n\ndef max_of_three(a,b,c):",
+        "prompt": (
+            "Write a Python function `balanced(s)` that returns True if the string s "
+            "has balanced parentheses, brackets, and braces. Supports ()[]{}. "
+            "Output only the function.\n\n"
+            "def balanced(s):"
+        ),
         "test_cases": [
-            ("max_of_three(1,2,3)", 3),
-            ("max_of_three(5,5,5)", 5),
-            ("max_of_three(9,3,6)", 9),
+            ("balanced('([]){}')", True),
+            ("balanced('([)]')", False),
+            ("balanced('')", True),
+            ("balanced('((()))')", True),
+            ("balanced('{[}]')", False),
+            ("balanced('({[]})')", True),
         ],
-        "extract_after": "def max_of_three(a,b,c):",
+        "extract_after": "def balanced(s):",
     },
     {
-        "prompt": "Write a Python function `factorial(n)` that returns n! for non-negative integers. Output only the function.\n\ndef factorial(n):",
+        "prompt": (
+            "Write a Python function `merge_intervals(intervals)` that merges "
+            "overlapping intervals. Input: list of [start, end] pairs. "
+            "Return sorted merged intervals. "
+            "Output only the function.\n\n"
+            "def merge_intervals(intervals):"
+        ),
         "test_cases": [
-            ("factorial(0)", 1),
-            ("factorial(5)", 120),
-            ("factorial(1)", 1),
+            ("merge_intervals([[1,3],[2,6],[8,10],[15,18]])", [[1, 6], [8, 10], [15, 18]]),
+            ("merge_intervals([[1,4],[4,5]])", [[1, 5]]),
+            ("merge_intervals([])", []),
+            ("merge_intervals([[1,2]])", [[1, 2]]),
+            ("merge_intervals([[1,10],[2,3],[4,5]])", [[1, 10]]),
         ],
-        "extract_after": "def factorial(n):",
+        "extract_after": "def merge_intervals(intervals):",
     },
     {
-        "prompt": "Write a Python function `reverse_string(s)` that returns the reversed string. Output only the function.\n\ndef reverse_string(s):",
+        "prompt": (
+            "Write a Python function `spiral_order(matrix)` that returns elements "
+            "of a 2D matrix in spiral order (clockwise from top-left). "
+            "Output only the function.\n\n"
+            "def spiral_order(matrix):"
+        ),
         "test_cases": [
-            ("reverse_string('hello')", "olleh"),
-            ("reverse_string('')", ""),
-            ("reverse_string('a')", "a"),
+            ("spiral_order([[1,2,3],[4,5,6],[7,8,9]])", [1, 2, 3, 6, 9, 8, 7, 4, 5]),
+            ("spiral_order([[1,2],[3,4]])", [1, 2, 4, 3]),
+            ("spiral_order([[1]])", [1]),
+            ("spiral_order([[1,2,3,4]])", [1, 2, 3, 4]),
+            ("spiral_order([[1],[2],[3]])", [1, 2, 3]),
         ],
-        "extract_after": "def reverse_string(s):",
+        "extract_after": "def spiral_order(matrix):",
     },
     {
-        "prompt": "Write a Python function `count_vowels(s)` that counts vowels (aeiou, case insensitive) in a string. Output only the function.\n\ndef count_vowels(s):",
+        "prompt": (
+            "Write a Python function `eval_rpn(tokens)` that evaluates a list of "
+            "tokens in Reverse Polish Notation. Tokens are strings: numbers or "
+            "operators (+, -, *, /). Division truncates toward zero. "
+            "Output only the function.\n\n"
+            "def eval_rpn(tokens):"
+        ),
         "test_cases": [
-            ("count_vowels('hello')", 2),
-            ("count_vowels('AEIOU')", 5),
-            ("count_vowels('xyz')", 0),
+            ("eval_rpn(['2','1','+','3','*'])", 9),
+            ("eval_rpn(['4','13','5','/','+'])", 6),
+            ("eval_rpn(['10','6','9','3','+','-11','*','/','*','17','+','5','+'])", 22),
+            ("eval_rpn(['3','4','-'])", -1),
         ],
-        "extract_after": "def count_vowels(s):",
+        "extract_after": "def eval_rpn(tokens):",
+    },
+    {
+        "prompt": (
+            "Write a Python function `permutations(nums)` that returns all "
+            "permutations of a list of distinct integers. Return a list of lists. "
+            "Output only the function.\n\n"
+            "def permutations(nums):"
+        ),
+        "test_cases": [
+            ("sorted(permutations([1,2,3]))", sorted([[1,2,3],[1,3,2],[2,1,3],[2,3,1],[3,1,2],[3,2,1]])),
+            ("permutations([1])", [[1]]),
+            ("len(permutations([1,2,3,4]))", 24),
+        ],
+        "extract_after": "def permutations(nums):",
     },
 ]
 
 
 def score_code(response: str, challenge: dict) -> float:
     """Execute generated code against test cases, return fraction passing."""
-    # Reconstruct full function
     func_header = challenge["extract_after"]
     body = response.strip()
-    # If model repeated the header, strip it
     if body.startswith("def "):
         code = body
     else:
         code = func_header + "\n" + body
 
-    # Clean up — take only until the next def or class or empty lines
+    # Take only the function body
     lines = code.split("\n")
     clean_lines = [lines[0]]
     for line in lines[1:]:
@@ -111,7 +171,7 @@ class CodeProbe(BaseProbe):
         scores = []
         for challenge in CHALLENGES:
             response = model.generate_short(
-                challenge["prompt"], max_new_tokens=80, temperature=0.0
+                challenge["prompt"], max_new_tokens=150, temperature=0.0
             )
             score = score_code(response, challenge)
             scores.append(score)

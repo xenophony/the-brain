@@ -140,19 +140,24 @@ def board_to_ascii(board):
     return "\n".join(lines)
 
 
-def compute_probability_density(board, ship_cells, placements):
+def compute_probability_density(board):
     """
-    Compute probability density for each unknown cell.
+    Compute probability density for each unknown cell using ONLY visible
+    board state. Does NOT use ground truth ship positions.
 
-    TARGET mode: if there are active hits (hits adjacent to unknowns),
-    enumerate all valid ship placements consistent with the board state
-    and score each unknown cell by how many placements include it.
+    For each ship size in the standard fleet, slides all valid placements
+    (horizontal and vertical) across the board. A placement is valid if
+    all its cells are either HIT or unknown (not MISS). Each valid
+    placement increments the density of its unknown cells.
 
-    HUNT mode: if no active hits, use checkerboard parity.
+    This is the standard Battleship probability density algorithm.
+    Placements that include existing HITs are weighted 2x (TARGET mode)
+    vs placements over pure unknowns (HUNT mode).
 
     Returns dict of (row, col) -> density for unknown cells.
     """
-    # Identify hits and unknowns
+    SHIP_LENGTHS = [5, 4, 3, 3, 2]  # standard fleet
+
     hits = set()
     misses = set()
     unknowns = set()
@@ -169,44 +174,9 @@ def compute_probability_density(board, ship_cells, placements):
     if not unknowns:
         return {}
 
-    # Check for active hits: hits adjacent to at least one unknown
-    active_hits = set()
-    for hr, hc in hits:
-        for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
-            nr, nc = hr + dr, hc + dc
-            if (nr, nc) in unknowns:
-                active_hits.add((hr, hc))
-                break
-
-    if not active_hits:
-        # HUNT mode — checkerboard parity
-        density = {}
-        for r, c in unknowns:
-            # Checkerboard: even parity cells get higher score
-            density[(r, c)] = 2.0 if (r + c) % 2 == 0 else 1.0
-        return density
-
-    # TARGET mode — enumerate valid placements for remaining ships
-    # Determine which ships are still unsunk (have unknown cells)
-    remaining_ship_lengths = []
-    for cells, length in placements:
-        # A ship is "active" if it has hits but also unknown cells
-        ship_hits = cells & hits
-        ship_unknowns = cells & unknowns
-        if ship_hits and ship_unknowns:
-            remaining_ship_lengths.append(length)
-        elif not ship_hits:
-            # Ship hasn't been touched at all
-            remaining_ship_lengths.append(length)
-
-    if not remaining_ship_lengths:
-        # Fallback to uniform
-        return {(r, c): 1.0 for r, c in unknowns}
-
     density = {(r, c): 0.0 for r, c in unknowns}
 
-    # For each remaining ship length, try all valid placements
-    for length in remaining_ship_lengths:
+    for length in SHIP_LENGTHS:
         for r in range(BOARD_SIZE):
             for c in range(BOARD_SIZE):
                 for horizontal in [True, False]:
@@ -219,7 +189,7 @@ def compute_probability_density(board, ship_cells, placements):
                             continue
                         cells = [(r + k, c) for k in range(length)]
 
-                    # Check validity: no misses, only hits or unknowns
+                    # Validity: every cell must be HIT or unknown
                     valid = True
                     has_hit = False
                     unknown_in_placement = []
@@ -232,11 +202,11 @@ def compute_probability_density(board, ship_cells, placements):
                         elif (cr, cc) in unknowns:
                             unknown_in_placement.append((cr, cc))
                         else:
+                            # Should not happen, but treat as blocking
                             valid = False
                             break
 
                     if valid and unknown_in_placement:
-                        # Weight placements that include active hits higher
                         weight = 2.0 if has_hit else 1.0
                         for ur, uc in unknown_in_placement:
                             density[(ur, uc)] += weight
@@ -244,9 +214,10 @@ def compute_probability_density(board, ship_cells, placements):
     return density
 
 
-def score_response(response: str, board, ship_cells, placements) -> float:
+def score_response(response: str, board) -> float:
     """
     Score a coordinate response against the probability density oracle.
+    Uses ONLY visible board state — no ground truth ship positions.
     Score = cell_density / max_density.
     """
     response = response.strip().upper()
@@ -267,7 +238,7 @@ def score_response(response: str, board, ship_cells, placements) -> float:
     if board[row][col] is not None:
         return 0.0
 
-    density = compute_probability_density(board, ship_cells, placements)
+    density = compute_probability_density(board)
     if not density:
         return 0.0
 
@@ -300,11 +271,11 @@ class SpatialProbe(BaseProbe):
         self._ensure_boards()
         scores = []
 
-        for board, ship_cells, placements in self._boards:
+        for board, _ship_cells, _placements in self._boards:
             ascii_board = board_to_ascii(board)
             prompt = PROMPT_TEMPLATE.format(board_ascii=ascii_board)
             response = model.generate_short(prompt, max_new_tokens=5, temperature=0.0)
-            score = score_response(response, board, ship_cells, placements)
+            score = score_response(response, board)
             scores.append(score)
 
         return sum(scores) / len(scores) if scores else 0.0

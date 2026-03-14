@@ -35,6 +35,8 @@ class SweepConfig:
     save_interval: int = 10            # checkpoint every N configs
     timeout_seconds: float = 30.0      # max seconds per config (0 = no timeout)
     mode: str = "duplicate"            # "duplicate", "skip", or "both"
+    baseline_repeats: int = 3          # run baseline N times for variance estimation
+    resume: bool = False               # resume from existing checkpoint
 
 
 @dataclass
@@ -71,7 +73,9 @@ class SweepRunner:
         self.model = None
         self.n_layers = None
         self.baseline_scores = {}
+        self.baseline_std = {}              # per-probe baseline standard deviation
         self.results: list[ConfigResult] = []
+        self._completed_configs: set[tuple[int, int, str]] = set()  # (i, j, mode)
 
     def load_model(self):
         """Load model via the configured adapter class."""
@@ -192,6 +196,10 @@ class SweepRunner:
         """Run the full sweep. Supports duplicate, skip, or both modes."""
         self.load_model()
 
+        # Resume from checkpoint if requested
+        if self.config.resume:
+            self._load_checkpoint()
+
         mode = self.config.mode
         if mode == "both":
             # Run duplicate sweep first, then skip sweep
@@ -223,30 +231,55 @@ class SweepRunner:
         label = "duplicate" if mode == "duplicate" else "skip"
         block_label = "duplicated" if mode == "duplicate" else "skipped"
 
-        # Baseline (0,0) — same path for both modes
-        print(f"Running {label} baseline (0,0)...")
-        baseline_path = self.build_layer_path(0, 0)
-        self.baseline_scores = self.run_probes(baseline_path)
-        print(f"Baseline scores: {self.baseline_scores}")
+        # Check if baseline already completed (resume case)
+        if (0, 0, mode) not in self._completed_configs:
+            # Baseline with variance estimation
+            n_repeats = max(1, self.config.baseline_repeats)
+            print(f"Running {label} baseline (0,0) x{n_repeats}...")
+            baseline_path = self.build_layer_path(0, 0)
 
-        baseline_result = ConfigResult(
-            i=0, j=0,
-            n_duplicated=0,
-            probe_scores=self.baseline_scores,
-            probe_deltas={k: 0.0 for k in self.baseline_scores},
-            runtime_seconds=0.0,
-            mode=mode,
-        )
-        self.results.append(baseline_result)
-        self._checkpoint()
+            all_scores = []
+            for rep in range(n_repeats):
+                scores = self.run_probes(baseline_path)
+                all_scores.append(scores)
+
+            # Mean baseline
+            self.baseline_scores = {}
+            self.baseline_std = {}
+            for probe_name in self.config.probe_names:
+                values = [s[probe_name] for s in all_scores]
+                self.baseline_scores[probe_name] = float(np.mean(values))
+                self.baseline_std[probe_name] = float(np.std(values)) if n_repeats > 1 else 0.0
+
+            print(f"Baseline scores: {self.baseline_scores}")
+            if n_repeats > 1:
+                print(f"Baseline std:    {self.baseline_std}")
+
+            baseline_result = ConfigResult(
+                i=0, j=0,
+                n_duplicated=0,
+                probe_scores=self.baseline_scores,
+                probe_deltas={k: 0.0 for k in self.baseline_scores},
+                runtime_seconds=0.0,
+                mode=mode,
+            )
+            self.results.append(baseline_result)
+            self._completed_configs.add((0, 0, mode))
+            self._checkpoint()
+        else:
+            print(f"Baseline already completed (resumed), skipping")
 
         # Sweep
         configs = self.all_configs()
+        remaining = [(i, j) for i, j in configs if (i, j, mode) not in self._completed_configs]
         total = len(configs)
-        print(f"Sweeping {total} {label} configs ({self.n_layers} layers, "
+        skipped = total - len(remaining)
+        if skipped > 0:
+            print(f"Resuming: {skipped}/{total} configs already done, {len(remaining)} remaining")
+        print(f"Sweeping {len(remaining)} {label} configs ({self.n_layers} layers, "
               f"probes: {self.config.probe_names})")
 
-        for idx, (i, j) in enumerate(configs):
+        for idx, (i, j) in enumerate(remaining):
             t0 = time.time()
             layer_path = path_builder(i, j)
             scores = self.run_probes(layer_path)
@@ -263,11 +296,12 @@ class SweepRunner:
                 mode=mode,
             )
             self.results.append(result)
+            self._completed_configs.add((i, j, mode))
 
             # Progress
             combined_delta = sum(deltas.values())
             sign = "+" if mode == "duplicate" else "-"
-            print(f"[{idx+1}/{total}] ({i},{j}) {sign}{n_affected} layers {block_label} | "
+            print(f"[{skipped+idx+1}/{total}] ({i},{j}) {sign}{n_affected} layers {block_label} | "
                   f"delta={combined_delta:+.4f} | {elapsed:.1f}s")
 
             if (idx + 1) % self.config.save_interval == 0:
@@ -277,16 +311,56 @@ class SweepRunner:
         print(f"\n{label.capitalize()} sweep complete. Results saved to {self.output_dir}")
     
     def _checkpoint(self):
-        """Save current results to disk."""
+        """Save current results to disk atomically (write tmp then rename)."""
         out = self.output_dir / "sweep_results.json"
-        with open(out, "w") as f:
+        tmp = self.output_dir / "sweep_results.json.tmp"
+        with open(tmp, "w") as f:
             json.dump([asdict(r) for r in self.results], f, indent=2)
+        tmp.replace(out)
 
     def _save_results(self, results: list[ConfigResult], filename: str):
-        """Save a specific result set to disk."""
+        """Save a specific result set to disk atomically."""
         out = self.output_dir / filename
-        with open(out, "w") as f:
+        tmp = self.output_dir / (filename + ".tmp")
+        with open(tmp, "w") as f:
             json.dump([asdict(r) for r in results], f, indent=2)
+        tmp.replace(out)
+
+    def _load_checkpoint(self) -> bool:
+        """
+        Load existing checkpoint and populate completed configs set.
+        Returns True if checkpoint was loaded.
+        """
+        out = self.output_dir / "sweep_results.json"
+        if not out.exists():
+            return False
+        try:
+            with open(out) as f:
+                data = json.load(f)
+            for r in data:
+                mode = r.get("mode", "duplicate")
+                result = ConfigResult(
+                    i=r["i"], j=r["j"],
+                    n_duplicated=r["n_duplicated"],
+                    probe_scores=r["probe_scores"],
+                    probe_deltas=r["probe_deltas"],
+                    runtime_seconds=r["runtime_seconds"],
+                    mode=mode,
+                )
+                self.results.append(result)
+                self._completed_configs.add((r["i"], r["j"], mode))
+
+                # Restore baseline scores from (0,0) entry
+                if r["i"] == 0 and r["j"] == 0:
+                    self.baseline_scores = r["probe_scores"]
+
+            print(f"Resumed from checkpoint: {len(self.results)} configs already completed")
+            return True
+        except (json.JSONDecodeError, KeyError) as e:
+            print(f"Warning: corrupt checkpoint, starting fresh: {e}")
+            self.results = []
+            self._completed_configs = set()
+            return False
 
     def best_config(self, probe: Optional[str] = None) -> ConfigResult:
         """Return config with highest combined (or single probe) delta."""

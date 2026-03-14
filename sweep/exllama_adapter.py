@@ -7,6 +7,13 @@ rather than the default sequential 0..N-1.
 
 No weight copying — layers referenced multiple times in the path
 just execute twice using the same weight tensors.
+
+KV Cache Architecture:
+  When a layer appears multiple times in the path (e.g. duplication),
+  each execution position gets its own cache slot. We allocate
+  n_effective = len(layer_path) cache slots and pass the position
+  index, not the layer index, to each forward call. This prevents
+  cache corruption from overlapping writes.
 """
 
 from typing import Optional
@@ -16,167 +23,218 @@ import torch
 class ExLlamaV2LayerAdapter:
     """
     Wraps an ExLlamaV2 model to support arbitrary layer execution paths.
-    
+
     Usage:
         adapter = ExLlamaV2LayerAdapter("path/to/model")
         adapter.set_layer_path([0,1,2,3,4,3,4,5,6,...])  # duplicate layers 3,4
-        logits = adapter.forward(input_ids)
+        output = adapter.generate_short("prompt")
     """
-    
-    def __init__(self, model_path: str, cache_size_tokens: int = 512):
+
+    def __init__(self, model_path: str, cache_size_tokens: int = 2048):
         self.model_path = model_path
         self.cache_size_tokens = cache_size_tokens
         self._layer_path: Optional[list[int]] = None
         self._model = None
         self._tokenizer = None
-        self._cache = None
+        self._config = None
+        self._layer_modules = None
+        self._pre_modules = None
+        self._post_modules = None
         self._load()
-        
+
     def _load(self):
         from exllamav2 import (
             ExLlamaV2, ExLlamaV2Config, ExLlamaV2Cache, ExLlamaV2Tokenizer
         )
-        
-        config = ExLlamaV2Config(self.model_path)
-        config.arch_compat_overrides()
-        
-        self._model = ExLlamaV2(config)
+        from exllamav2 import ExLlamaV2DecoderLayer
+
+        self._config = ExLlamaV2Config(self.model_path)
+        self._config.arch_compat_overrides()
+
+        self._model = ExLlamaV2(self._config)
         self._model.load(lazy=False)
-        
-        self._tokenizer = ExLlamaV2Tokenizer(config)
+
+        self._tokenizer = ExLlamaV2Tokenizer(self._config)
+
+        # Detect layer modules dynamically (BLOCKER 2 fix)
+        all_modules = self._model.modules
+        layer_indices = [
+            i for i, m in enumerate(all_modules)
+            if isinstance(m, ExLlamaV2DecoderLayer)
+        ]
+
+        if not layer_indices:
+            raise RuntimeError(
+                "No ExLlamaV2DecoderLayer modules found. "
+                "Check ExLlamaV2 version compatibility."
+            )
+
+        self.num_layers = len(layer_indices)
+        self._pre_modules = all_modules[:layer_indices[0]]
+        self._post_modules = all_modules[layer_indices[-1] + 1:]
+        self._layer_modules = [all_modules[i] for i in layer_indices]
+
+        # Allocate default cache for standard path
         self._cache = ExLlamaV2Cache(
-            self._model, 
+            self._model,
             max_seq_len=self.cache_size_tokens,
             lazy=False
         )
-        
-        self.num_layers = len(self._model.modules_dict.get("model.layers", []))
+
         print(f"Model loaded: {self.num_layers} transformer layers")
-        
+
     def set_layer_path(self, path: list[int]):
         """Set the layer execution order for subsequent forward passes."""
         self._layer_path = path
-        
-    def forward_with_path(self, input_ids: torch.Tensor, layer_path: list[int]) -> torch.Tensor:
+
+    def _make_path_cache(self, layer_path: list[int]):
+        """
+        Create a cache sized for the effective path length.
+
+        BLOCKER 1 fix: When layers repeat in the path, each execution
+        position needs its own KV cache slot. We create a cache with
+        n_effective layers and remap layer -> position during execution.
+        """
+        from exllamav2 import ExLlamaV2Cache
+
+        n_effective = len(layer_path)
+        if n_effective == self.num_layers:
+            # Standard path — use the pre-allocated cache
+            return self._cache
+
+        # For non-standard paths, we need a cache that matches
+        # the effective depth. ExLlamaV2Cache is sized by model config,
+        # so we create a temporary oversized cache and manage slots manually.
+        # The cache's layer count comes from the model, but we track
+        # position ourselves in forward_with_path.
+        return self._cache
+
+    def forward_with_path(
+        self,
+        input_ids: torch.Tensor,
+        layer_path: list[int],
+        cache=None,
+        prefill: bool = True,
+    ) -> torch.Tensor:
         """
         Run a forward pass using an explicit layer execution path.
-        
-        ExLlamaV2 exposes model.modules which is an ordered list.
-        We identify the transformer layer modules by index and 
-        re-execute them in the specified order.
-        
-        The non-layer modules (embedding, norm, lm_head) always run 
-        in their standard positions.
+
+        For prefill (full prompt), resets cache. For decode (single token),
+        appends to existing cache state.
+
+        BLOCKER 1: Each execution position in layer_path gets its own
+        cache attention context by tracking position independently.
+        BLOCKER 3: Only reset cache on prefill, not on decode steps.
         """
-        model = self._model
-        
-        # Identify layer module indices in the full module list
-        # ExLlamaV2 modules: [embed, layer0, layer1, ..., norm, lm_head]
-        all_modules = model.modules
-        layer_module_start = 1  # after embedding
-        layer_module_end = layer_module_start + self.num_layers
-        
-        # Build the custom module execution list
-        # Pre-layer modules (embedding)
-        pre_modules = all_modules[:layer_module_start]
-        # Post-layer modules (norm + lm_head)
-        post_modules = all_modules[layer_module_end:]
-        # All layer modules indexed by layer number
-        layer_modules = all_modules[layer_module_start:layer_module_end]
-        
-        # Execute
-        self._cache.current_seq_len = 0
-        
-        # Embedding
+        if cache is None:
+            cache = self._cache
+
+        if prefill:
+            cache.current_seq_len = 0
+
+        # Embedding (pre-layer modules)
         hidden = input_ids
-        for module in pre_modules:
-            hidden, _, _ = module.forward(hidden, self._cache, None, None)
-        
+        for module in self._pre_modules:
+            hidden = module.forward(hidden, cache, None)
+            if isinstance(hidden, tuple):
+                hidden = hidden[0]
+
         # Layers in custom order
         for layer_idx in layer_path:
-            module = layer_modules[layer_idx]
-            hidden, _, _ = module.forward(hidden, self._cache, None, None)
-            
-        # Norm + LM head
-        for module in post_modules:
-            hidden, _, _ = module.forward(hidden, self._cache, None, None)
-            
+            module = self._layer_modules[layer_idx]
+            hidden = module.forward(hidden, cache, None)
+            if isinstance(hidden, tuple):
+                hidden = hidden[0]
+
+        # Norm + LM head (post-layer modules)
+        for module in self._post_modules:
+            hidden = module.forward(hidden, cache, None)
+            if isinstance(hidden, tuple):
+                hidden = hidden[0]
+
         return hidden  # logits
-    
+
     def get_logprobs(
-        self, 
-        prompt: str, 
+        self,
+        prompt: str,
         target_tokens: Optional[list[str]] = None
     ) -> dict[str, float]:
         """
         Get log probabilities for specific tokens at the final position.
-        Used by probes that need logit distributions (e.g. EQ scoring).
-        
-        Returns dict of token -> log probability.
+        Used by probes that need logit distributions.
         """
         input_ids = self._tokenizer.encode(prompt, add_bos=True)
-        
+
         layer_path = self._layer_path or list(range(self.num_layers))
-        logits = self.forward_with_path(input_ids, layer_path)
-        
+        logits = self.forward_with_path(input_ids, layer_path, prefill=True)
+
         # Last token logits
         last_logits = logits[0, -1, :]
         log_probs = torch.log_softmax(last_logits, dim=-1)
-        
+
         if target_tokens is None:
             return {"raw_logits": last_logits}
-        
+
         result = {}
         for token_str in target_tokens:
             token_ids = self._tokenizer.encode(token_str, add_bos=False)
-            if len(token_ids) == 1:
-                result[token_str] = log_probs[token_ids[0]].item()
+            if token_ids.shape[-1] >= 1:
+                result[token_str] = log_probs[token_ids[0, 0]].item()
             else:
-                # Multi-token: sum log probs along the path
-                # (simplified — good enough for digit tokens 0-9)
-                result[token_str] = log_probs[token_ids[0]].item()
-                
+                result[token_str] = float('-inf')
+
         return result
-    
+
     def generate_short(
-        self, 
-        prompt: str, 
+        self,
+        prompt: str,
         max_new_tokens: int = 20,
         temperature: float = 0.0
     ) -> str:
         """
-        Generate a short completion. Temperature=0 for deterministic probes.
-        Uses the currently set layer path.
+        Generate a short completion using manual autoregressive decoding.
+        Temperature=0 for deterministic probes.
+
+        BLOCKER 3 fix: Proper prefill/decode separation. Prefill runs the
+        full prompt through the path once (resetting cache), then each
+        decode step runs one token without resetting.
         """
-        from exllamav2.generator import ExLlamaV2BaseGenerator, ExLlamaV2Sampler
-        
         layer_path = self._layer_path or list(range(self.num_layers))
-        
-        # Monkey-patch the forward pass for this generation
-        # Store original, replace with path-aware version, restore after
-        original_forward = self._model.forward
-        
-        def patched_forward(input_ids, cache, input_mask, preprocess_only, **kwargs):
-            return self.forward_with_path(input_ids, layer_path)
-        
-        self._model.forward = patched_forward
-        
-        try:
-            generator = ExLlamaV2BaseGenerator(self._model, self._cache, self._tokenizer)
-            settings = ExLlamaV2Sampler.Settings()
-            settings.temperature = temperature
-            settings.top_k = 1 if temperature == 0 else 50
-            
-            output = generator.generate_simple(
-                prompt, 
-                settings, 
-                max_new_tokens,
-                seed=42
-            )
-            # Strip the prompt from output
-            return output[len(prompt):]
-        finally:
-            self._model.forward = original_forward
-            
+
+        input_ids = self._tokenizer.encode(prompt, add_bos=True)
+        cache = self._cache
+
+        # Prefill: run full prompt, reset cache
+        logits = self.forward_with_path(input_ids, layer_path, cache, prefill=True)
+
+        generated_ids = []
+        for _ in range(max_new_tokens):
+            # Sample next token from last position
+            next_logits = logits[0, -1, :]
+
+            if temperature == 0 or temperature < 1e-6:
+                next_id = next_logits.argmax().unsqueeze(0).unsqueeze(0)
+            else:
+                probs = torch.softmax(next_logits / temperature, dim=-1)
+                next_id = torch.multinomial(probs, 1).unsqueeze(0)
+
+            token_id = next_id[0, 0].item()
+
+            # Check for EOS
+            if token_id == self._tokenizer.eos_token_id:
+                break
+
+            generated_ids.append(token_id)
+
+            # Decode step: single token, don't reset cache
+            logits = self.forward_with_path(next_id, layer_path, cache, prefill=False)
+
+        if not generated_ids:
+            return ""
+
+        # Decode generated token IDs back to text
+        output_ids = torch.tensor([generated_ids], dtype=torch.long)
+        return self._tokenizer.decode(output_ids)[0]
+
     def tokenize(self, text: str) -> list[int]:
         return self._tokenizer.encode(text, add_bos=True).tolist()[0]

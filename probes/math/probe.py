@@ -26,14 +26,14 @@ QUESTIONS = [
 def score_math(response: str, expected: int) -> float:
     """Score a numeric response with partial credit."""
     response = response.strip()
-    # Extract number from response
+    # Extract LAST number from response (e.g. "17 * 23 = 391" → 391)
     import re
-    match = re.search(r'-?\d+', response)
-    if not match:
+    matches = re.findall(r'-?\d+', response)
+    if not matches:
         return 0.0
 
     try:
-        got = int(match.group())
+        got = int(matches[-1])
     except ValueError:
         return 0.0
 

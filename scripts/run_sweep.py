@@ -49,6 +49,10 @@ def main():
                         help="Timeout in seconds per config (default: 30)")
     parser.add_argument("--mode", choices=["duplicate", "skip", "both"], default="duplicate",
                         help="Sweep mode: duplicate layers, skip layers, or both (default: duplicate)")
+    parser.add_argument("--resume", action="store_true",
+                        help="Resume from existing checkpoint (skip completed configs)")
+    parser.add_argument("--baseline-repeats", type=int, default=3,
+                        help="Number of baseline runs for variance estimation (default: 3)")
 
     args = parser.parse_args()
     
@@ -110,6 +114,8 @@ def main():
         max_block_size=args.max_block,
         timeout_seconds=args.timeout,
         mode=args.mode,
+        baseline_repeats=args.baseline_repeats,
+        resume=args.resume,
     )
 
     runner = SweepRunner(config, adapter_class=adapter_class)

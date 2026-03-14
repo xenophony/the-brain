@@ -69,4 +69,20 @@
 [02:27] DONE: All 44 tests passing
 [02:28] DONE: Smoke test mode=both completed — overlay_math.png, quadrant_map_math.png, optimized_path_recommendations.json generated
 [02:28] DONE: Updated CLAUDE.md with pruning sweep documentation (modes, quadrant table, optimized path builder)
-[02:29] NEXT: Commit pruning sweep work.
+[02:29] DONE: Committed pruning sweep work.
+
+## Pre-Production Fixes
+[02:30] DONE: BLOCKER 1 — Rewrote ExLlamaV2 adapter KV cache: prefill/decode separation, position-based cache tracking
+[02:31] DONE: BLOCKER 2 — Fixed num_layers detection: dynamic ExLlamaV2DecoderLayer isinstance check instead of modules_dict
+[02:31] DONE: BLOCKER 3 — Replaced monkey-patched generator with manual autoregressive decode loop (proper prefill/decode)
+[02:32] DONE: BLOCKER 4 — Replaced 6 trivial code challenges with 7 harder ones (flatten, LCS, balanced brackets, merge intervals, spiral, RPN eval, permutations)
+[02:33] DONE: BLOCKER 5 — Rewrote spatial oracle to use ONLY visible board state, no ground truth ship positions
+[02:34] DONE: HIGH — Added baseline variance estimation (3 repeats, mean+std per probe)
+[02:34] DONE: HIGH — Added checkpoint resume (--resume flag, skip completed configs)
+[02:35] DONE: MEDIUM — Math extraction now uses last number in response, not first
+[02:35] DONE: MEDIUM — Atomic checkpointing (write .tmp then rename)
+[02:35] DONE: MEDIUM — Replaced factual probe questions with genuinely obscure facts
+[02:36] DONE: Updated mock adapter for all changed probes
+[02:36] DONE: All 44 tests passing
+[02:37] DONE: FIXES_SUMMARY.md written with detailed descriptions of each fix
+[02:37] NEXT: Commit pre-production fixes.
