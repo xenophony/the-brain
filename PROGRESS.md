@@ -306,3 +306,13 @@
 [13:30] DONE: Fix: multiply max_tokens by 8x (min 1024) for Gemini models in both OpenRouterAdapter and GeminiAdapter
 [13:30] DONE: All 201 tests passing
 [13:30] NEXT: Rerun gemini-2.5-pro on all probes with --no-resume
+
+## Gemini Direct API + Model Upgrade
+[14:00] DONE: Listed available Gemini models via Google AI API — gemini-3.1-pro-preview available
+[14:00] DONE: Updated MODEL_REGISTRY: gemini-3.1-pro uses GeminiAdapter directly (not OpenRouter)
+[14:00] DONE: Model ID: gemini-3.1-pro-preview (Google AI API, frontier ceiling)
+[14:00] DONE: Fallback: OpenRouter google/gemini-2.5-pro-preview-05-06 if GOOGLE_API_KEY not set
+[14:00] DONE: Updated estimate_cost.py pricing and model list
+[14:00] DONE: 8x token multiplier confirmed in both GeminiAdapter and OpenRouterAdapter
+[14:00] DONE: Dry run shows all 5 models OK, $0.36 estimated
+[14:00] DONE: All 201 tests passing

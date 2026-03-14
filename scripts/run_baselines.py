@@ -43,14 +43,14 @@ MODEL_REGISTRY = {
     "llama-70b": ("openrouter", "meta-llama/llama-3.3-70b-instruct"),
     "qwen-30b": ("openrouter", "qwen/qwen3-32b"),
     "claude-sonnet": ("openrouter", "anthropic/claude-sonnet-4"),
-    "gemini-2.5-pro": ("openrouter", "google/gemini-2.5-pro-preview-05-06"),
+    "gemini-3.1-pro": ("gemini", "gemini-3.1-pro-preview"),
 }
 
 FALLBACK_REGISTRY = {
     "llama-8b": ("groq", "llama-3.1-8b-instant"),
     "llama-70b": ("groq", "llama-3.3-70b-versatile"),
     "claude-sonnet": ("claude", "claude-sonnet-4-20250514"),
-    "gemini-2.5-pro": ("gemini", "gemini-2.5-pro-preview-05-06"),
+    "gemini-3.1-pro": ("openrouter", "google/gemini-2.5-pro-preview-05-06"),
 }
 
 ALL_PROBES = [
@@ -168,7 +168,7 @@ PRICING = {  # (input_per_1M, output_per_1M) USD, updated 2026-03
     "llama-70b": (0.40, 0.40),
     "qwen-30b": (0.30, 0.30),
     "claude-sonnet": (3.00, 15.00),
-    "gemini-2.5-pro": (2.00, 12.00),
+    "gemini-3.1-pro": (2.50, 15.00),
 }
 
 
