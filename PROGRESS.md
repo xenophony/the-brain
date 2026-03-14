@@ -15,3 +15,43 @@
 [00:02] DONE: Created all __init__.py files for Python imports
 [00:02] DONE: Created requirements.txt
 [00:03] NEXT: Verify imports resolve correctly, then spawn parallel subagents
+
+## Subagent 1 — Infrastructure
+[02:05] BLOCKED: ExLlamaV2 adapter validation — exllamav2 not installed (no GPU setup) — needs pip install exllamav2 + CUDA GPU
+[02:05] SKIPPING TO: Mock adapter compatibility and sweep runner fixes
+[02:06] DONE: Updated sweep/mock_adapter.py — added model_path parameter for API compatibility with runner
+[02:06] DONE: Updated sweep/runner.py — SweepRunner now accepts optional adapter_class parameter (defaults to ExLlamaV2LayerAdapter)
+[02:06] DONE: Added timeout_seconds to SweepConfig (default 30s) and threading-based per-config timeout in SweepRunner
+[02:07] DONE: Added --mock and --timeout flags to scripts/run_sweep.py
+[02:08] DONE: Smoke test passed — ran full sweep with MockAdapter (mock model, math+spatial probes, max-block=3, max-layers=6, 15 configs)
+[02:08] DONE: Results saved to results/latest/sweep_results.json (16 entries including baseline)
+[02:08] DONE: Heatmap generation verified — heatmap_math.png, heatmap_spatial.png, skyline.png, circuit_boundaries.json all generated
+[02:08] DONE: Standalone heatmap generation also works via generate_all_plots()
+[02:09] NEXT: All infrastructure tasks complete. Ready for real model testing when exllamav2 is available.
+
+## Subagent 2 — Probes
+[02:10] DONE: Upgraded sweep/mock_adapter.py — 3 modes (random/perfect/terrible), smart prompt detection for all probes
+[02:12] DONE: Implemented EQ probe (12 scenarios: guilt, anger, surprise, relief, jealousy, pride, betrayal, gratitude, shame, anxiety, contentment, frustration)
+[02:12] DONE: Implemented Factual probe (12 obscure facts with number/word exact match + off-by-one scoring)
+[02:12] DONE: Implemented Language probe (16 sentences, 8 grammatical + 8 ungrammatical, subtle violations)
+[02:12] DONE: Implemented Tool Use probe (12 scenarios with abstract tool names, exact match scoring)
+[02:12] DONE: Implemented Holistic/Analogy probe (12 non-obvious analogies with accept lists)
+[02:13] DONE: Implemented Planning probe (10 step-ordering scenarios, pairwise scoring)
+[02:13] DONE: Implemented Instruction Following probe (10 multi-constraint scenarios, programmatic checkers)
+[02:14] DONE: Redesigned Spatial/Battleship probe — generated boards (seed=42), fleet placement, mid-game simulation, probability density oracle scoring
+[02:15] DONE: Created probes/test_probes.py — 31 tests (perfect/terrible mode for all 10 probes + scoring function unit tests + board determinism)
+[02:15] DONE: All 31 tests passing
+[02:15] DONE: Updated scripts/run_sweep.py — added "planning" and "instruction" to ALL_PROBES list
+[02:15] NEXT: All probe tasks complete. No NotImplementedError stubs remaining.
+
+## Merge and Final Validation
+[02:16] DONE: Merged all subagent work (infrastructure + probes) into main branch
+[02:16] DONE: Applied mid-session guidance — added 3 five-step deep dependency chain planning scenarios
+[02:16] DONE: Applied mid-session guidance — added 3 conflicting-constraint instruction scenarios (lowercase, no-spaces, embedded numbers)
+[02:16] DONE: Fixed planning scoring to reject natural-language prose containing step letters
+[02:16] DONE: Updated mock adapter for new planning and instruction scenarios
+[02:17] DONE: All 31 tests passing after refinements
+[02:17] DONE: Full mock sweep with all 10 probes completed (26 configs, 8 layers)
+[02:17] DONE: All 10 heatmaps + skyline + circuit_boundaries.json generated
+[02:17] DONE: MORNING_SUMMARY.md written with status, blockers, next commands, and decisions needed
+[02:18] NEXT: Commit all work. Pipeline ready for cloud GPU deployment.

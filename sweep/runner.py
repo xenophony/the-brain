@@ -13,6 +13,7 @@ Reference: https://dnhkng.github.io/posts/rys/
 import json
 import time
 import itertools
+import threading
 from pathlib import Path
 from dataclasses import dataclass, asdict
 from typing import Optional
@@ -30,6 +31,7 @@ class SweepConfig:
     max_block_size: Optional[int] = None
     baseline_first: bool = True        # always run (0,0) baseline first
     save_interval: int = 10            # checkpoint every N configs
+    timeout_seconds: float = 30.0      # max seconds per config (0 = no timeout)
 
 
 @dataclass  
@@ -42,21 +44,38 @@ class ConfigResult:
     runtime_seconds: float
 
 
+class _TimeoutError(Exception):
+    """Raised when a config run exceeds its timeout."""
+    pass
+
+
 class SweepRunner:
-    def __init__(self, config: SweepConfig):
+    def __init__(self, config: SweepConfig, adapter_class=None):
+        """
+        Initialize sweep runner.
+
+        Args:
+            config: SweepConfig with sweep parameters.
+            adapter_class: Optional model adapter class. If None, uses
+                ExLlamaV2LayerAdapter. Pass MockAdapter for testing.
+        """
         self.config = config
+        self.adapter_class = adapter_class
         self.output_dir = Path(config.output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
-        
+
         self.model = None
         self.n_layers = None
         self.baseline_scores = {}
         self.results: list[ConfigResult] = []
-        
+
     def load_model(self):
-        """Load model via ExLlamaV2 with layer path injection support."""
-        from sweep.exllama_adapter import ExLlamaV2LayerAdapter
-        self.model = ExLlamaV2LayerAdapter(self.config.model_path)
+        """Load model via the configured adapter class."""
+        if self.adapter_class is not None:
+            self.model = self.adapter_class(self.config.model_path)
+        else:
+            from sweep.exllama_adapter import ExLlamaV2LayerAdapter
+            self.model = ExLlamaV2LayerAdapter(self.config.model_path)
         self.n_layers = self.model.num_layers
         print(f"Loaded model with {self.n_layers} layers")
         
@@ -80,17 +99,51 @@ class SweepRunner:
         return first_pass + second_pass
     
     def run_probes(self, layer_path: list[int]) -> dict[str, float]:
-        """Run all configured probes on the given layer path."""
+        """Run all configured probes on the given layer path, with optional timeout."""
         from probes.registry import get_probe
-        
+
         scores = {}
         self.model.set_layer_path(layer_path)
-        
+
+        timeout = self.config.timeout_seconds
+
         for probe_name in self.config.probe_names:
             probe = get_probe(probe_name)
-            scores[probe_name] = probe.run(self.model)
-            
+            if timeout and timeout > 0:
+                scores[probe_name] = self._run_probe_with_timeout(
+                    probe, timeout
+                )
+            else:
+                try:
+                    scores[probe_name] = probe.run(self.model)
+                except Exception as e:
+                    print(f"  Probe {probe_name} error: {e}")
+                    scores[probe_name] = 0.0
+
         return scores
+
+    def _run_probe_with_timeout(self, probe, timeout: float) -> float:
+        """Run a single probe with a timeout. Returns 0.0 on timeout or error."""
+        result = [0.0]
+        error = [None]
+
+        def target():
+            try:
+                result[0] = probe.run(self.model)
+            except Exception as e:
+                error[0] = e
+
+        thread = threading.Thread(target=target, daemon=True)
+        thread.start()
+        thread.join(timeout=timeout)
+
+        if thread.is_alive():
+            print(f"  Probe {probe.name} timed out after {timeout}s — returning 0.0")
+            return 0.0
+        if error[0] is not None:
+            print(f"  Probe {probe.name} error: {error[0]} — returning 0.0")
+            return 0.0
+        return result[0]
     
     def compute_deltas(self, scores: dict[str, float]) -> dict[str, float]:
         return {

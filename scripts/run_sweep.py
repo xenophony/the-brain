@@ -23,7 +23,7 @@ from sweep.runner import SweepRunner, SweepConfig, estimate_sweep_time
 from probes.registry import list_probes
 
 
-ALL_PROBES = ["math", "eq", "code", "factual", "spatial", "language", "tool_use", "holistic"]
+ALL_PROBES = ["math", "eq", "code", "factual", "spatial", "language", "tool_use", "holistic", "planning", "instruction"]
 
 
 def main():
@@ -43,6 +43,10 @@ def main():
                         help="Just print time/cost estimate, don't run")
     parser.add_argument("--analyze-after", action="store_true", default=True,
                         help="Run heatmap analysis after sweep completes")
+    parser.add_argument("--mock", action="store_true",
+                        help="Use MockAdapter instead of ExLlamaV2 (for testing without GPU)")
+    parser.add_argument("--timeout", type=float, default=30.0,
+                        help="Timeout in seconds per config (default: 30)")
     
     args = parser.parse_args()
     
@@ -86,6 +90,12 @@ def main():
         print(f"  Estimated cost (A100 @ $0.80/hr): ${est['estimated_cost_a100_usd']}")
         return
     
+    # Resolve adapter class
+    adapter_class = None
+    if args.mock:
+        from sweep.mock_adapter import MockAdapter
+        adapter_class = MockAdapter
+
     # Run sweep
     config = SweepConfig(
         model_path=args.model,
@@ -94,9 +104,10 @@ def main():
         max_layers=args.max_layers,
         min_block_size=args.min_block,
         max_block_size=args.max_block,
+        timeout_seconds=args.timeout,
     )
-    
-    runner = SweepRunner(config)
+
+    runner = SweepRunner(config, adapter_class=adapter_class)
     results = runner.run()
     
     # Report best configs
