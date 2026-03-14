@@ -851,6 +851,58 @@ class MockAdapter:
         "what is the square root of 144? answer with only the number.",
     }
 
+    # ------------------------------------------------------------------ #
+    #  Residual stream tracing interface                                    #
+    # ------------------------------------------------------------------ #
+
+    def forward_with_hooks(self, prompt, hook_fn, layer_path=None):
+        """Generate synthetic hidden states for tracing."""
+        import math as _math
+
+        if layer_path is None:
+            layer_path = list(range(self.num_layers))
+
+        n_steps = len(layer_path)
+
+        for k, layer_idx in enumerate(layer_path):
+            # Generate synthetic probability that evolves through layers
+            t = k / max(n_steps - 1, 1)  # normalized position 0..1
+
+            if self.mode == "sycophantic":
+                # Normal rise then sharp drop at 60%
+                if t < 0.6:
+                    p = 0.05 + 0.7 * (t / 0.6)
+                else:
+                    p = 0.75 - 1.5 * (t - 0.6)
+                    p = max(p, 0.05)
+            elif self.mode == "terrible":
+                # Flat low probability
+                p = 0.02 + 0.03 * _math.sin(t * _math.pi)
+            else:
+                # Perfect mode: sigmoidal rise, peak at ~60%, slight decay
+                p = 0.05 + 0.85 / (1 + _math.exp(-12 * (t - 0.45)))
+                if t > 0.7:
+                    p -= 0.05 * (t - 0.7) / 0.3
+
+            # Create synthetic hidden state (just the probability value)
+            hidden = {"_synthetic_p": p, "_layer_idx": layer_idx, "_position": k}
+            hook_fn(k, hidden)
+
+    def project_to_vocab(self, hidden):
+        """Return synthetic probability distribution from hidden state."""
+        if isinstance(hidden, dict) and "_synthetic_p" in hidden:
+            p = hidden["_synthetic_p"]
+            # Return dict mapping token_id -> probability
+            # Correct tokens get p, rest gets distributed
+            return {"_correct": p, "_default": (1.0 - p)}
+        return {"_default": 1.0}
+
+    def tokens_to_ids(self, token_strings):
+        """Convert token strings to synthetic IDs."""
+        if isinstance(token_strings, list):
+            return ["_correct"] * len(token_strings)
+        return ["_correct"]
+
     def _fragile_response(self, prompt: str) -> str:
         """Fragile mode: correct on clean (Version A) prompts, wrong on B/C/D."""
         p = prompt.strip().lower()

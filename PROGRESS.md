@@ -156,3 +156,16 @@
 [05:00] DONE: Updated MockAdapter with all new item responses
 [05:00] DONE: Updated test_probes.py with _extract_score() helper
 [05:00] DONE: All 81 tests passing after difficulty tiering upgrade
+
+## Residual Stream Tracing Infrastructure
+[06:00] DONE: Added forward_with_hooks(), project_to_vocab(), tokens_to_ids() to MockAdapter — synthetic sigmoidal/sycophantic/terrible probability curves
+[06:00] DONE: Added forward_with_hooks(), project_to_vocab(), tokens_to_ids() to ExLlamaV2LayerAdapter — real model hidden state projection
+[06:05] DONE: Created analysis/residual_tracer.py — ResidualTracer with trace(), trace_batch(), trace_domain(), compare_paths(), trace_sycophancy(), trace_hallucination()
+[06:05] DONE: Created analysis/trace_heatmap.py — overlay_trace_on_heatmap(), validate_circuit_mechanistically(), generate_mechanistic_report()
+[06:10] DONE: Created scripts/run_traces.py — CLI for --probe, --all-domains, --mock, --mode safety
+[06:10] DONE: Created RESEARCH.md — project overview, residual stream analysis technique, trace types, connection to ROME/logit lens, phase roadmap
+[06:15] DONE: Created analysis/test_traces.py — 34 tests covering MockAdapter hooks, ResidualTracer, SycophancyTrace, HallucinationTrace, DomainTrace, PathComparison, trace_heatmap, existing mode regression
+[06:15] DONE: All 34 new trace tests passing
+[06:15] DONE: All 145 existing tests still passing (0 regressions)
+[06:20] DONE: Ran scripts/run_traces.py --all-domains --mock — 16/18 probes traced successfully, output saved to results/traces/
+[06:20] NEXT: Residual stream tracing infrastructure complete. Ready for real model validation.

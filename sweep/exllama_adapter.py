@@ -236,5 +236,66 @@ class ExLlamaV2LayerAdapter:
         output_ids = torch.tensor([generated_ids], dtype=torch.long)
         return self._tokenizer.decode(output_ids)[0]
 
+    # ------------------------------------------------------------------ #
+    #  Residual stream tracing interface                                    #
+    # ------------------------------------------------------------------ #
+
+    def forward_with_hooks(self, prompt_or_ids, hook_fn, layer_path=None):
+        """Run forward pass calling hook_fn at each layer."""
+        if layer_path is None:
+            layer_path = self._layer_path or list(range(self.num_layers))
+
+        if isinstance(prompt_or_ids, str):
+            input_ids = self._tokenizer.encode(prompt_or_ids, add_bos=True)
+        else:
+            input_ids = prompt_or_ids
+
+        cache = self._cache
+        cache.current_seq_len = 0
+
+        hidden = input_ids
+        for module in self._pre_modules:
+            hidden = module.forward(hidden, cache, None)
+            if isinstance(hidden, tuple):
+                hidden = hidden[0]
+
+        for k, layer_idx in enumerate(layer_path):
+            module = self._layer_modules[layer_idx]
+            hidden = module.forward(hidden, cache, None)
+            if isinstance(hidden, tuple):
+                hidden = hidden[0]
+            if hook_fn:
+                hook_fn(k, hidden.detach().clone())
+
+        return hidden
+
+    def project_to_vocab(self, hidden_state):
+        """Project hidden state to vocabulary probability distribution."""
+        # Apply final norm + lm_head
+        h = hidden_state
+        for module in self._post_modules:
+            h = module.forward(h, self._cache, None)
+            if isinstance(h, tuple):
+                h = h[0]
+
+        # Convert to probabilities
+        logits = h[0, -1, :] if h.dim() == 3 else h[-1, :]
+        probs = torch.softmax(logits, dim=-1)
+
+        # Return as dict for consistency with MockAdapter
+        return {i: probs[i].item() for i in range(min(100, len(probs)))}
+
+    def tokens_to_ids(self, token_strings):
+        """Convert token strings to token IDs."""
+        if isinstance(token_strings, list):
+            ids = []
+            for s in token_strings:
+                encoded = self._tokenizer.encode(s, add_bos=False)
+                if encoded.shape[-1] >= 1:
+                    ids.append(encoded[0, 0].item())
+            return ids
+        encoded = self._tokenizer.encode(token_strings, add_bos=False)
+        return [encoded[0, 0].item()] if encoded.shape[-1] >= 1 else []
+
     def tokenize(self, text: str) -> list[int]:
         return self._tokenizer.encode(text, add_bos=True).tolist()[0]
