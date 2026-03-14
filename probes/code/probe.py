@@ -326,7 +326,7 @@ class CodeProbe(BaseProbe):
             scores = easy_scores if difficulty == "easy" else hard_scores
             for challenge in items:
                 response = model.generate_short(
-                    challenge["prompt"], max_new_tokens=150, temperature=0.0
+                    challenge["prompt"], max_new_tokens=400, temperature=0.0
                 )
                 score = score_code(response, challenge)
                 scores.append(score)

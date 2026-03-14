@@ -321,7 +321,7 @@ def score_response(response: str, board) -> float:
 
 PROMPT_TEMPLATE = """{board_ascii}
 
-What is the single best next shot? Answer with only a grid coordinate like "B4". No explanation."""
+What is the single best next shot? You MUST respond with ONLY a grid coordinate like "B4". Single coordinate only. No explanation. No reasoning. Just the coordinate."""
 
 
 @register_probe

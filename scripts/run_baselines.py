@@ -67,6 +67,8 @@ RESPONSES_FILE = OUTPUT_DIR / "baseline_responses.json"
 # Parallelism config
 MAX_PARALLEL_PROBES = 6  # max concurrent probes per model
 PROBE_TIMEOUT_SECONDS = 180  # 3 minutes max per probe
+# Note: daemon threads are abandoned on timeout but underlying sockets may
+# keep the process alive. Use os._exit() in extreme cases if needed.
 
 
 # ---------------------------------------------------------------------------
@@ -301,8 +303,15 @@ def _run_single_probe(adapter, probe_name: str, progress_counter: dict,
         if samples:
             print(f"\n    --- {probe_name} samples ---")
             for label, s in samples[:2]:
-                resp = s.get("response", "")[:120]
-                print(f"    [{label} score={s.get('score', '?')}] {resp!r}")
+                # Handle different probe response key names
+                resp = (s.get("response") or s.get("raw_response")
+                        or s.get("reasoning_raw") or s.get("direct_raw") or "")
+                resp = resp[:120]
+                extracted = s.get("extracted", s.get("reasoning_extracted", ""))
+                score_val = s.get("score", s.get("item_score", "?"))
+                print(f"    [{label} score={score_val}] resp={resp!r}")
+                if extracted:
+                    print(f"    extracted: {extracted!r}")
 
     return {
         "probe": probe_name,

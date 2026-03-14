@@ -60,7 +60,7 @@ def _log_api_call(
 # ---------------------------------------------------------------------------
 
 def _retry_with_backoff(fn, max_retries: int = 3, base_delay: float = 1.0,
-                        timeout_seconds: float = 30.0):
+                        timeout_seconds: float = 20.0):
     """Call *fn*; retry on rate-limit (429) or transient errors with exp backoff.
 
     Each individual call is wrapped in a thread with a timeout to prevent hangs.

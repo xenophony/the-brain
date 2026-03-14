@@ -238,4 +238,18 @@
 [10:18] DONE: FIX 6 — Updated run_baselines.py: sets log_responses=True, saves item_results to baseline_responses.json, prints 2 sample responses per probe.
 [10:20] DONE: All 81 tests passing. No regressions.
 [10:22] DONE: Created SCORING_FIXES.md with detailed descriptions of each fix.
-[10:22] NEXT: Ready for re-running baselines with fixed extraction.
+[10:22] DONE: Ready for re-running baselines with fixed extraction.
+
+## Baseline Rerun Fixes
+[10:30] DONE: FIX 1 — Code probe max_new_tokens increased from 150 to 400 (hard challenges were being truncated mid-function)
+[10:30] DONE: FIX 2 — Spatial prompt strengthened: "You MUST respond with ONLY a grid coordinate... No explanation. No reasoning."
+[10:30] DONE: FIX 3 — Consistency sample printing fixed: handles reasoning_raw/direct_raw keys not just "response"
+[10:30] DONE: FIX 4 — Per-call timeout reduced from 30s to 20s to prevent cumulative hanging on slow endpoints
+[10:30] DONE: All 192 tests passing
+
+## Baseline Rerun Fixes
+[10:30] DONE: FIX 1 — Code probe max_new_tokens increased from 150 to 400 (hard challenges were being truncated mid-function)
+[10:30] DONE: FIX 2 — Spatial prompt strengthened: "You MUST respond with ONLY a grid coordinate... No explanation. No reasoning."
+[10:30] DONE: FIX 3 — Consistency sample printing fixed: handles reasoning_raw/direct_raw keys not just "response"
+[10:30] DONE: FIX 4 — Per-call timeout reduced from 30s to 20s to prevent cumulative hanging on slow endpoints
+[10:30] DONE: All 192 tests passing
