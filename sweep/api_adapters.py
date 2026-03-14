@@ -59,16 +59,42 @@ def _log_api_call(
 #  Retry helper
 # ---------------------------------------------------------------------------
 
-def _retry_with_backoff(fn, max_retries: int = 3, base_delay: float = 1.0):
-    """Call *fn*; retry on rate-limit (429) or transient errors with exp backoff."""
+def _retry_with_backoff(fn, max_retries: int = 3, base_delay: float = 1.0,
+                        timeout_seconds: float = 30.0):
+    """Call *fn*; retry on rate-limit (429) or transient errors with exp backoff.
+
+    Each individual call is wrapped in a thread with a timeout to prevent hangs.
+    """
+    import threading
+
     last_exc = None
     for attempt in range(max_retries + 1):
-        try:
-            return fn()
-        except Exception as exc:
-            last_exc = exc
-            exc_str = str(exc).lower()
-            status = getattr(exc, "status_code", None) or getattr(exc, "status", None)
+        result_holder = [None]
+        error_holder = [None]
+
+        def _target():
+            try:
+                result_holder[0] = fn()
+            except Exception as exc:
+                error_holder[0] = exc
+
+        thread = threading.Thread(target=_target, daemon=True)
+        thread.start()
+        thread.join(timeout=timeout_seconds)
+
+        if thread.is_alive():
+            # Call timed out
+            last_exc = TimeoutError(f"API call timed out after {timeout_seconds}s (attempt {attempt + 1}/{max_retries + 1})")
+            if attempt == max_retries:
+                raise last_exc
+            delay = base_delay * (2 ** attempt)
+            time.sleep(delay)
+            continue
+
+        if error_holder[0] is not None:
+            last_exc = error_holder[0]
+            exc_str = str(last_exc).lower()
+            status = getattr(last_exc, "status_code", None) or getattr(last_exc, "status", None)
             is_rate_limit = (status == 429) or ("429" in exc_str) or ("rate" in exc_str and "limit" in exc_str)
             is_transient = (
                 is_rate_limit
@@ -77,9 +103,14 @@ def _retry_with_backoff(fn, max_retries: int = 3, base_delay: float = 1.0):
                 or "connection" in exc_str
             )
             if not is_transient or attempt == max_retries:
-                raise
+                raise last_exc
             delay = base_delay * (2 ** attempt)
             time.sleep(delay)
+            continue
+
+        return result_holder[0]
+
+    raise last_exc  # should not reach here
     raise last_exc  # type: ignore[misc]
 
 

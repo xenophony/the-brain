@@ -65,6 +65,7 @@ OUTPUT_FILE = OUTPUT_DIR / "baseline_scores.json"
 
 # Parallelism config
 MAX_PARALLEL_PROBES = 6  # max concurrent probes per model
+PROBE_TIMEOUT_SECONDS = 180  # 3 minutes max per probe
 
 
 # ---------------------------------------------------------------------------
@@ -212,52 +213,85 @@ def _estimate_time(n_models: int, n_probes: int, total_items: int) -> dict:
 
 def _run_single_probe(adapter, probe_name: str, progress_counter: dict,
                       progress_lock: Lock, model_name: str) -> dict:
-    """Run one probe against one adapter. Thread-safe."""
+    """Run one probe against one adapter. Thread-safe, with per-probe timeout."""
+    import threading
+
     t0 = time.perf_counter()
-    try:
-        probe = get_probe(probe_name)
-        result = probe.run(adapter)
-        elapsed = time.perf_counter() - t0
+    n_items = _count_probe_items(probe_name)
 
-        # Extract score from dict or float
-        if isinstance(result, dict):
-            score = result.get("score", 0.0)
-        else:
-            score = float(result)
+    # Run probe in a daemon thread with timeout
+    result_holder = [None]
+    error_holder = [None]
 
-        n_items = _count_probe_items(probe_name)
+    def _target():
+        try:
+            probe = get_probe(probe_name)
+            result_holder[0] = probe.run(adapter)
+        except Exception as exc:
+            error_holder[0] = exc
 
+    thread = threading.Thread(target=_target, daemon=True)
+    thread.start()
+    thread.join(timeout=PROBE_TIMEOUT_SECONDS)
+
+    elapsed = time.perf_counter() - t0
+
+    if thread.is_alive():
+        # Probe timed out
+        error_msg = (f"Probe timed out after {PROBE_TIMEOUT_SECONDS}s "
+                     f"({n_items} items, model={model_name})")
         with progress_lock:
             progress_counter["done"] += 1
             done = progress_counter["done"]
             total = progress_counter["total"]
             print(f"\r  [{model_name}] {done}/{total} probes | "
-                  f"{probe_name}: {score:.3f} ({elapsed:.1f}s)", end="", flush=True)
-
-        return {
-            "probe": probe_name,
-            "score": round(score, 4),
-            "n_items": n_items,
-            "latency_seconds": round(elapsed, 2),
-            "error": None,
-        }
-
-    except Exception as exc:
-        elapsed = time.perf_counter() - t0
-        with progress_lock:
-            progress_counter["done"] += 1
-            done = progress_counter["done"]
-            total = progress_counter["total"]
-            print(f"\r  [{model_name}] {done}/{total} probes | "
-                  f"{probe_name}: ERROR ({elapsed:.1f}s)", end="", flush=True)
-
+                  f"{probe_name}: TIMEOUT after {elapsed:.0f}s", end="", flush=True)
         return {
             "probe": probe_name,
             "score": 0.0,
-            "n_items": 0,
+            "n_items": n_items,
             "latency_seconds": round(elapsed, 2),
-            "error": str(exc),
+            "error": error_msg,
         }
+
+    if error_holder[0] is not None:
+        exc = error_holder[0]
+        error_msg = f"{type(exc).__name__}: {exc}"
+        with progress_lock:
+            progress_counter["done"] += 1
+            done = progress_counter["done"]
+            total = progress_counter["total"]
+            print(f"\r  [{model_name}] {done}/{total} probes | "
+                  f"{probe_name}: ERROR {type(exc).__name__} ({elapsed:.1f}s)", end="", flush=True)
+        return {
+            "probe": probe_name,
+            "score": 0.0,
+            "n_items": n_items,
+            "latency_seconds": round(elapsed, 2),
+            "error": error_msg,
+        }
+
+    # Success
+    result = result_holder[0]
+    if isinstance(result, dict):
+        score = result.get("score", 0.0)
+    else:
+        score = float(result)
+
+    with progress_lock:
+        progress_counter["done"] += 1
+        done = progress_counter["done"]
+        total = progress_counter["total"]
+        print(f"\r  [{model_name}] {done}/{total} probes | "
+              f"{probe_name}: {score:.3f} ({elapsed:.1f}s)", end="", flush=True)
+
+    return {
+        "probe": probe_name,
+        "score": round(score, 4),
+        "n_items": n_items,
+        "latency_seconds": round(elapsed, 2),
+        "error": None,
+    }
 
 
 # ---------------------------------------------------------------------------

@@ -209,6 +209,12 @@
 [08:30] DONE: Added time estimate to --dry-run (sequential: 13.5min, parallel: 2.2min, 6x speedup)
 [08:30] DONE: All 192 tests passing, 14 skipped
 
+## Baseline Runner Reliability Fixes
+[09:00] DONE: Added per-API-call timeout (30s) to _retry_with_backoff — prevents individual calls from hanging forever
+[09:00] DONE: Added per-probe timeout (180s/3min) to _run_single_probe — kills hung probes, records partial error
+[09:00] DONE: Improved error logging — shows exception type and message, distinguishes TIMEOUT vs ERROR
+[09:00] DONE: Cleared failed gemini-3-pro and qwen-30b spatial results for rerun
+
 ## OpenRouter Integration + claude-opus Removal
 [08:00] DONE: Added OpenRouterAdapter to sweep/api_adapters.py — OpenAI-compatible client, exponential backoff, API logging
 [08:00] DONE: Added "openrouter" to ADAPTER_MAP and _ENV_KEYS in api_adapters.py
