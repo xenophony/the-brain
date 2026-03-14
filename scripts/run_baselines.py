@@ -30,11 +30,18 @@ from sweep.api_adapters import get_adapter, available_providers, _ENV_KEYS
 # ---------------------------------------------------------------------------
 
 MODEL_REGISTRY = {
+    "llama-8b": ("openrouter", "meta-llama/llama-3.1-8b-instruct"),
+    "llama-70b": ("openrouter", "meta-llama/llama-3.3-70b-instruct"),
+    "qwen-30b": ("openrouter", "qwen/qwen-2.5-32b-instruct"),
+    "claude-sonnet": ("openrouter", "anthropic/claude-sonnet-4"),
+    "gemini-3-pro": ("openrouter", "google/gemini-2.5-pro-preview-05-06"),
+}
+
+FALLBACK_REGISTRY = {
     "llama-8b": ("groq", "llama-3.1-8b-instant"),
     "llama-70b": ("groq", "llama-3.3-70b-versatile"),
-    "gemini-2.5-pro": ("gemini", "gemini-2.5-pro-preview-05-06"),
     "claude-sonnet": ("claude", "claude-sonnet-4-20250514"),
-    "claude-opus": ("claude", "claude-opus-4-20250514"),
+    "gemini-3-pro": ("gemini", "gemini-2.5-pro-preview-05-06"),
 }
 
 ALL_PROBES = [
@@ -80,15 +87,39 @@ def _load_existing(path: Path) -> dict:
     return {}
 
 
+def _resolve_provider(model_name: str) -> tuple[str, str] | None:
+    """Resolve model to (provider, sdk_model_id), trying OpenRouter first then fallback."""
+    if model_name not in MODEL_REGISTRY:
+        return None
+    provider, sdk_model = MODEL_REGISTRY[model_name]
+    env_key = _ENV_KEYS.get(provider, "")
+    if os.environ.get(env_key):
+        return provider, sdk_model
+    # Try fallback if OpenRouter key not set
+    if model_name in FALLBACK_REGISTRY:
+        fb_provider, fb_model = FALLBACK_REGISTRY[model_name]
+        fb_env_key = _ENV_KEYS.get(fb_provider, "")
+        if os.environ.get(fb_env_key):
+            return fb_provider, fb_model
+    return None
+
+
 def _check_model_available(model_name: str) -> tuple[bool, str]:
     """Check if the API key for a model is set. Returns (ok, reason)."""
     if model_name not in MODEL_REGISTRY:
         return False, f"Unknown model '{model_name}'"
+    resolved = _resolve_provider(model_name)
+    if resolved is not None:
+        return True, ""
     provider, _ = MODEL_REGISTRY[model_name]
     env_key = _ENV_KEYS.get(provider, "")
-    if not os.environ.get(env_key):
-        return False, f"{env_key} not set"
-    return True, ""
+    fb_keys = []
+    if model_name in FALLBACK_REGISTRY:
+        fb_provider, _ = FALLBACK_REGISTRY[model_name]
+        fb_env_key = _ENV_KEYS.get(fb_provider, "")
+        fb_keys.append(fb_env_key)
+    needed = [env_key] + fb_keys
+    return False, f"None of {needed} set"
 
 
 # ---------------------------------------------------------------------------
@@ -101,11 +132,11 @@ _EST_OUTPUT_TOKENS_PER_PROBE_ITEM = 15   # probes require short outputs
 _EST_ITEMS_PER_PROBE = 15                # average items per probe
 
 PRICING = {  # (input_per_1M, output_per_1M) USD, updated 2026-03
-    "claude-sonnet": (3.00, 15.00),
-    "claude-opus": (15.00, 75.00),
-    "gemini-2.5-pro": (1.25, 10.00),
-    "llama-8b": (0.05, 0.08),
-    "llama-70b": (0.59, 0.79),
+    "llama-8b": (0.06, 0.06),      # OpenRouter Llama 3.1 8B
+    "llama-70b": (0.40, 0.40),     # OpenRouter Llama 3.3 70B
+    "qwen-30b": (0.30, 0.30),      # OpenRouter Qwen 32B
+    "claude-sonnet": (3.00, 15.00), # OpenRouter Claude Sonnet 4
+    "gemini-3-pro": (2.00, 12.00),  # OpenRouter Gemini 3 Pro Preview
 }
 
 
@@ -173,7 +204,11 @@ def run_baselines(
         return results
 
     for m_idx, model_name in enumerate(runnable, 1):
-        provider, sdk_model = MODEL_REGISTRY[model_name]
+        resolved = _resolve_provider(model_name)
+        if resolved is None:
+            print(f"SKIP: {model_name} (no API key)")
+            continue
+        provider, sdk_model = resolved
 
         if model_name not in results:
             results[model_name] = {}

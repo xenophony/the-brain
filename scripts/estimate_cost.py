@@ -19,20 +19,20 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 # ---------------------------------------------------------------------------
 
 PRICING = {  # (input_per_1M, output_per_1M) USD, updated 2026-03
-    "claude-sonnet": (3.00, 15.00),
-    "claude-opus": (15.00, 75.00),
-    "gemini-2.5-pro": (1.25, 10.00),
-    "groq-llama-8b": (0.05, 0.08),
-    "groq-llama-70b": (0.59, 0.79),
+    "llama-8b": (0.06, 0.06),      # OpenRouter Llama 3.1 8B
+    "llama-70b": (0.40, 0.40),     # OpenRouter Llama 3.3 70B
+    "qwen-30b": (0.30, 0.30),      # OpenRouter Qwen 32B
+    "claude-sonnet": (3.00, 15.00), # OpenRouter Claude Sonnet 4
+    "gemini-3-pro": (2.00, 12.00),  # OpenRouter Gemini 3 Pro Preview
 }
 
-# Map model registry names to pricing keys
+# Map model registry names to pricing keys (direct mapping now)
 _PRICING_KEY = {
+    "llama-8b": "llama-8b",
+    "llama-70b": "llama-70b",
+    "qwen-30b": "qwen-30b",
     "claude-sonnet": "claude-sonnet",
-    "claude-opus": "claude-opus",
-    "gemini-2.5-pro": "gemini-2.5-pro",
-    "llama-8b": "groq-llama-8b",
-    "llama-70b": "groq-llama-70b",
+    "gemini-3-pro": "gemini-3-pro",
 }
 
 # Probe token estimates
@@ -41,7 +41,7 @@ EST_ITEMS_PER_PROBE = 15
 EST_INPUT_TOKENS_PER_ITEM = 200
 EST_OUTPUT_TOKENS_PER_ITEM = 15
 
-ALL_MODELS = ["llama-8b", "llama-70b", "gemini-2.5-pro", "claude-sonnet", "claude-opus"]
+ALL_MODELS = ["llama-8b", "llama-70b", "qwen-30b", "claude-sonnet", "gemini-3-pro"]
 
 
 # ---------------------------------------------------------------------------

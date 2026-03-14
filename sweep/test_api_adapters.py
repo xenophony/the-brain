@@ -23,6 +23,7 @@ from sweep.api_adapters import (
     GeminiAdapter,
     GroqAdapter,
     TogetherAdapter,
+    OpenRouterAdapter,
     ADAPTER_MAP,
     _ENV_KEYS,
     available_providers,
@@ -110,6 +111,13 @@ class TestAdapterMissingKeys:
                 with pytest.raises(ValueError, match="TOGETHER_API_KEY"):
                     TogetherAdapter()
 
+    def test_openrouter_missing_key(self):
+        with patch.dict(os.environ, {}, clear=True):
+            mock_openai = MagicMock()
+            with patch.dict("sys.modules", {"openai": mock_openai}):
+                with pytest.raises(ValueError, match="OPENROUTER_API_KEY"):
+                    OpenRouterAdapter()
+
 
 class TestAdapterInterface:
     """Test that all adapters expose the same interface as MockAdapter."""
@@ -125,6 +133,7 @@ class TestAdapterInterface:
         assert "gemini" in ADAPTER_MAP
         assert "groq" in ADAPTER_MAP
         assert "together" in ADAPTER_MAP
+        assert "openrouter" in ADAPTER_MAP
 
     def test_adapter_classes_have_interface(self):
         for name, cls in ADAPTER_MAP.items():
@@ -351,6 +360,7 @@ _has_anthropic_key = bool(os.environ.get("ANTHROPIC_API_KEY"))
 _has_google_key = bool(os.environ.get("GOOGLE_API_KEY"))
 _has_groq_key = bool(os.environ.get("GROQ_API_KEY"))
 _has_together_key = bool(os.environ.get("TOGETHER_API_KEY"))
+_has_openrouter_key = bool(os.environ.get("OPENROUTER_API_KEY"))
 
 
 @pytest.mark.api
@@ -413,3 +423,26 @@ class TestTogetherAdapterLive:
         adapter = TogetherAdapter()
         result = adapter.generate_short("What is 2+2? Answer with just the number.", max_new_tokens=5)
         assert "4" in result
+
+
+@pytest.mark.api
+@pytest.mark.skipif(not _has_openrouter_key, reason="OPENROUTER_API_KEY not set")
+class TestOpenRouterAdapterLive:
+    def test_instantiation(self):
+        adapter = OpenRouterAdapter()
+        assert adapter.num_layers is None
+        assert adapter.model == "meta-llama/llama-3.1-8b-instruct"
+
+    def test_generate_short(self):
+        adapter = OpenRouterAdapter()
+        result = adapter.generate_short("What is 2+2? Answer with just the number.", max_new_tokens=5)
+        assert "4" in result
+
+    def test_set_layer_path_noop(self):
+        adapter = OpenRouterAdapter()
+        adapter.set_layer_path([0, 1, 2])  # should not raise
+
+    def test_get_logprobs_returns_dict(self):
+        adapter = OpenRouterAdapter()
+        result = adapter.get_logprobs("test")
+        assert isinstance(result, dict)

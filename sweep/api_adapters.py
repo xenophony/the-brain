@@ -330,6 +330,72 @@ class TogetherAdapter(BaseAPIAdapter):
 
 
 # ---------------------------------------------------------------------------
+#  OpenRouter (OpenAI-compatible, single key for multiple providers)
+# ---------------------------------------------------------------------------
+
+class OpenRouterAdapter(BaseAPIAdapter):
+    """OpenRouter API adapter — single key for multiple providers."""
+
+    def __init__(self, model: str = "meta-llama/llama-3.1-8b-instruct"):
+        super().__init__(model=model, provider="openrouter")
+        self.model_id = model
+        self.num_layers = None
+        api_key = os.environ.get("OPENROUTER_API_KEY")
+        if not api_key:
+            raise ValueError(
+                "OPENROUTER_API_KEY environment variable is not set. "
+                "Get your key at https://openrouter.ai/keys"
+            )
+        try:
+            from openai import OpenAI
+        except ImportError:
+            raise ImportError(
+                "openai SDK not installed. Run: pip install openai"
+            )
+        self.client = OpenAI(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=api_key,
+        )
+
+    def generate_short(self, prompt: str, max_new_tokens: int = 20, temperature: float = 0.0) -> str:
+        t0 = time.perf_counter()
+        error_msg = None
+        response_text = ""
+        try:
+            def _call():
+                return self.client.chat.completions.create(
+                    model=self.model,
+                    messages=[{"role": "user", "content": prompt}],
+                    max_tokens=max_new_tokens,
+                    temperature=temperature,
+                )
+            resp = _retry_with_backoff(_call)
+            response_text = resp.choices[0].message.content if resp.choices else ""
+        except Exception as exc:
+            error_msg = str(exc)
+            raise
+        finally:
+            elapsed_ms = (time.perf_counter() - t0) * 1000
+            _log_api_call(
+                provider="openrouter",
+                model=self.model,
+                prompt_length=len(prompt),
+                response_length=len(response_text),
+                latency_ms=elapsed_ms,
+                error=error_msg,
+            )
+        return response_text
+
+    def set_layer_path(self, path) -> None:  # noqa: ARG002
+        """No-op for API models (no layer-level control)."""
+        pass
+
+    def get_logprobs(self, prompt: str, target_tokens=None) -> dict:  # noqa: ARG002
+        """OpenRouter does not reliably expose logprobs; return empty dict."""
+        return {}
+
+
+# ---------------------------------------------------------------------------
 #  Factory
 # ---------------------------------------------------------------------------
 
@@ -338,6 +404,7 @@ ADAPTER_MAP = {
     "gemini": GeminiAdapter,
     "groq": GroqAdapter,
     "together": TogetherAdapter,
+    "openrouter": OpenRouterAdapter,
 }
 
 _ENV_KEYS = {
@@ -345,6 +412,7 @@ _ENV_KEYS = {
     "gemini": "GOOGLE_API_KEY",
     "groq": "GROQ_API_KEY",
     "together": "TOGETHER_API_KEY",
+    "openrouter": "OPENROUTER_API_KEY",
 }
 
 

@@ -4,15 +4,32 @@ This document lists every API key needed to run baseline probe calibration again
 
 ## Overview
 
-The baseline runner (`scripts/run_baselines.py`) tests all 18 probes against multiple API-hosted models to calibrate difficulty before spending GPU money on sweeps. Total estimated cost: **~$1.48** for all models.
+The baseline runner (`scripts/run_baselines.py`) tests all 18 probes against multiple API-hosted models to calibrate difficulty before spending GPU money on sweeps.
+
+**Recommended approach:** Use a single **OpenRouter** API key to access all models through one provider. Total estimated cost: **~$0.35-0.40** for all models.
 
 ---
 
-## Required Keys (minimum for meaningful baselines)
+## Primary: OpenRouter (recommended)
 
-You need **at least one strong model and one weak model** to establish a difficulty range. The recommended minimum is Groq (free, weak model) + one of Claude/Gemini (strong model).
+| | |
+|---|---|
+| **Service** | OpenRouter |
+| **Models unlocked** | All 5: `llama-8b`, `llama-70b`, `qwen-30b`, `claude-sonnet`, `gemini-3-pro` |
+| **Get it at** | https://openrouter.ai/keys |
+| **Free tier** | Some open-weight models have free tiers; paid models billed per token |
+| **Cost for baseline** | **~$0.35-0.40** (all 5 models combined) |
+| **Environment variable** | `OPENROUTER_API_KEY` |
 
-### 1. Groq API Key
+**Why OpenRouter:** One key replaces 4 separate provider keys. Unified billing, unified rate limits, access to all model families (Llama, Qwen, Claude, Gemini) through a single OpenAI-compatible API.
+
+---
+
+## Fallback: Individual Provider Keys (optional)
+
+If you don't have an OpenRouter key, the baseline runner will fall back to individual provider keys for supported models.
+
+### Groq API Key (fallback for llama-8b, llama-70b)
 
 | | |
 |---|---|
@@ -20,42 +37,29 @@ You need **at least one strong model and one weak model** to establish a difficu
 | **Models unlocked** | `llama-8b` (Llama-3.1-8B), `llama-70b` (Llama-3.3-70B) |
 | **Get it at** | https://console.groq.com/keys |
 | **Free tier** | Yes — generous free tier with rate limits (30 req/min on free plan) |
-| **Cost for baseline** | **$0.04** (both models combined) |
 | **Environment variable** | `GROQ_API_KEY` |
 
-**Why this key matters:** Groq provides the weak baseline models (8B, 70B). These establish the floor — probes that even the 8B model aces are too easy and need harder items.
-
-### 2. Anthropic API Key
+### Anthropic API Key (fallback for claude-sonnet)
 
 | | |
 |---|---|
 | **Service** | Anthropic API |
-| **Models unlocked** | `claude-sonnet` (Claude Sonnet 4), `claude-opus` (Claude Opus 4) |
+| **Models unlocked** | `claude-sonnet` (Claude Sonnet 4) |
 | **Get it at** | https://console.anthropic.com/settings/keys |
 | **Free tier** | $5 free credit on signup |
-| **Cost for baseline** | **$1.34** (both models — Opus is $1.11 of this) |
 | **Environment variable** | `ANTHROPIC_API_KEY` |
 
-**Why this key matters:** Claude models are the strong baseline ceiling. Probes that Claude Opus aces may need harder items for 30B open-weight model sweeps. Running Sonnet only (skip Opus) cuts cost to $0.22.
-
-### 3. Google AI API Key
+### Google AI API Key (fallback for gemini-3-pro)
 
 | | |
 |---|---|
 | **Service** | Google AI Studio / Gemini API |
-| **Models unlocked** | `gemini-2.5-pro` (Gemini 2.5 Pro) |
+| **Models unlocked** | `gemini-3-pro` (Gemini 2.5 Pro) |
 | **Get it at** | https://aistudio.google.com/apikey |
 | **Free tier** | Yes — 15 req/min free, generous daily quota |
-| **Cost for baseline** | **$0.11** |
 | **Environment variable** | `GOOGLE_API_KEY` |
 
-**Why this key matters:** Gemini provides a strong independent data point. If a probe shows different patterns on Gemini vs Claude, that's evidence the probe measures something real rather than training-data-specific behavior.
-
----
-
-## Optional Keys (additional comparison points)
-
-### 4. Together AI API Key
+### Together AI API Key (additional open-weight models)
 
 | | |
 |---|---|
@@ -63,10 +67,9 @@ You need **at least one strong model and one weak model** to establish a difficu
 | **Models unlocked** | Open-weight models (Qwen, Mistral, etc.) via API |
 | **Get it at** | https://api.together.ai/settings/api-keys |
 | **Free tier** | $5 free credit on signup |
-| **Cost for baseline** | Varies by model selection |
 | **Environment variable** | `TOGETHER_API_KEY` |
 
-**Why this key matters:** Provides API access to the same open-weight model families we'll sweep with ExLlamaV2. Useful for comparing API baseline scores against local sweep baselines.
+**Note:** `qwen-30b` has no individual fallback — it is only available via OpenRouter.
 
 ---
 
@@ -74,13 +77,13 @@ You need **at least one strong model and one weak model** to establish a difficu
 
 | Model | Provider | Estimated Cost | Required? |
 |-------|----------|---------------|-----------|
-| llama-8b | Groq | $0.003 | Recommended (free) |
-| llama-70b | Groq | $0.035 | Recommended (free) |
-| gemini-2.5-pro | Google | $0.108 | Optional |
-| claude-sonnet | Anthropic | $0.223 | Recommended |
-| claude-opus | Anthropic | $1.114 | Optional (expensive) |
-| **Total (all)** | | **$1.48** | |
-| **Total (minimum: groq + sonnet)** | | **$0.26** | |
+| llama-8b | OpenRouter | $0.004 | Recommended |
+| llama-70b | OpenRouter | $0.022 | Recommended |
+| qwen-30b | OpenRouter | $0.016 | Optional |
+| claude-sonnet | OpenRouter | $0.223 | Recommended |
+| gemini-3-pro | OpenRouter | $0.117 | Optional |
+| **Total (all)** | | **~$0.38** | |
+| **Total (minimum: llama-8b + claude-sonnet)** | | **~$0.23** | |
 
 ---
 
@@ -97,32 +100,22 @@ cp .env.example .env
 Edit `.env` with your actual keys:
 
 ```
+# Primary — one key for all models (recommended)
+OPENROUTER_API_KEY=sk-or-...
+
+# Fallback — individual provider keys (optional)
 ANTHROPIC_API_KEY=sk-ant-api03-...
 GOOGLE_API_KEY=AIza...
 GROQ_API_KEY=gsk_...
 TOGETHER_API_KEY=...
 ```
 
-Only add keys for services you have accounts with. The baseline runner will skip models whose keys are missing and warn you.
+Only add keys for services you have accounts with. The baseline runner will try OpenRouter first, then fall back to individual provider keys.
 
 ### Step 3: Verify cost estimate
 
 ```bash
 python scripts/estimate_cost.py --task baselines --models all
-```
-
-Expected output:
-```
-=== Baseline Cost Estimate ===
-Model                 Input tok Output tok       Cost
--------------------------------------------------------
-  llama-8b               54,000      4,050 $  0.0030
-  llama-70b              54,000      4,050 $  0.0351
-  gemini-2.5-pro         54,000      4,050 $  0.1080
-  claude-sonnet          54,000      4,050 $  0.2228
-  claude-opus            54,000      4,050 $  1.1138
--------------------------------------------------------
-  TOTAL                                    $  1.4826
 ```
 
 ### Step 4: Dry run (verify setup without spending money)
@@ -171,9 +164,8 @@ This produces `results/baselines/CALIBRATION_REPORT.md` identifying:
 
 If you want to spend the absolute minimum:
 
-1. Get a **Groq key** (free): provides llama-8b (weak baseline)
-2. Get a **Google key** (free tier): provides gemini-2.5-pro (strong baseline)
-3. Run: `python scripts/run_baselines.py --models llama-8b gemini-2.5-pro`
-4. Cost: **$0.11** (almost entirely Gemini)
+1. Get an **OpenRouter key** at https://openrouter.ai/keys
+2. Run: `python scripts/run_baselines.py --models llama-8b claude-sonnet`
+3. Cost: **~$0.23** (almost entirely Claude Sonnet)
 
-This gives you a weak-vs-strong comparison for all 18 probes for about a dime.
+This gives you a weak-vs-strong comparison for all 18 probes.

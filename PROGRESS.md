@@ -195,3 +195,17 @@
 ## Documentation — Probe Review
 [07:30] DONE: Regenerated PROBE_REVIEW.md from scratch — 18 probes with verbatim examples, scoring, expected ranges, ceiling risks, orthogonality notes, summary table, Tier 1 sweep recommendation
 [07:30] NEXT: API adapter updates (OpenRouter, Gemini 3 Pro, remove Opus).
+
+## OpenRouter Integration + claude-opus Removal
+[08:00] DONE: Added OpenRouterAdapter to sweep/api_adapters.py — OpenAI-compatible client, exponential backoff, API logging
+[08:00] DONE: Added "openrouter" to ADAPTER_MAP and _ENV_KEYS in api_adapters.py
+[08:01] DONE: Updated MODEL_REGISTRY in scripts/run_baselines.py — all 5 models now route through OpenRouter primary
+[08:01] DONE: Added FALLBACK_REGISTRY in scripts/run_baselines.py — llama-8b/70b->groq, claude-sonnet->claude, gemini-3-pro->gemini
+[08:01] DONE: Added _resolve_provider() to run_baselines.py — tries OpenRouter first, then falls back to individual provider keys
+[08:02] DONE: Updated PRICING in run_baselines.py and estimate_cost.py — new OpenRouter pricing, removed claude-opus
+[08:02] DONE: Updated ALL_MODELS in estimate_cost.py — replaced gemini-2.5-pro with gemini-3-pro, added qwen-30b, removed claude-opus
+[08:03] DONE: Replaced API_KEYS_NEEDED.md — OpenRouter as primary, individual keys as fallback, no Opus references
+[08:03] DONE: Updated .env.example — added OPENROUTER_API_KEY as primary, kept others as optional fallback
+[08:04] DONE: Updated sweep/test_api_adapters.py — added OpenRouterAdapter import, missing-key test, adapter map assertion, live test class
+[08:04] DONE: Removed all claude-opus references across entire codebase (verified with grep)
+[08:05] DONE: All 192 tests passing (178 non-API + 14 API-skipped), 0 failures
