@@ -242,9 +242,18 @@ class GeminiAdapter(BaseAPIAdapter):
                     max_output_tokens=effective_max,
                     temperature=temperature,
                 )
+                # Disable safety filters — our probes contain benign academic content
+                # but Gemini's default filters can block math/science/emotional questions
+                safety_settings = {
+                    "HARM_CATEGORY_HARASSMENT": "BLOCK_NONE",
+                    "HARM_CATEGORY_HATE_SPEECH": "BLOCK_NONE",
+                    "HARM_CATEGORY_SEXUALLY_EXPLICIT": "BLOCK_NONE",
+                    "HARM_CATEGORY_DANGEROUS_CONTENT": "BLOCK_NONE",
+                }
                 return self._model_obj.generate_content(
                     prompt,
                     generation_config=generation_config,
+                    safety_settings=safety_settings,
                 )
             resp = _retry_with_backoff(_call, timeout_seconds=self.request_timeout)
             response_text = (resp.text or "") if hasattr(resp, 'text') else ""
