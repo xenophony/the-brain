@@ -1,10 +1,11 @@
 """
-Tests for all probes using MockAdapter.
+Tests for all probes using MockAdapter, plus sweep runner tests.
 
 Run: python -m pytest probes/test_probes.py -v
 """
 
 import sys
+import json
 from pathlib import Path
 
 # Ensure project root is on path
@@ -270,3 +271,195 @@ class TestScoringFunctions:
         assert len(density) > 0
         # The cell adjacent to the hit should have density > 0
         assert density.get((5, 6), 0) > 0 or density.get((5, 4), 0) > 0
+
+
+# ------------------------------------------------------------------ #
+#  Sweep runner tests — skip mode, build paths, optimized path         #
+# ------------------------------------------------------------------ #
+
+class TestSweepRunner:
+    def test_build_skip_path_identity(self):
+        """(0,0) skip path should be identity."""
+        from sweep.runner import SweepRunner, SweepConfig
+        config = SweepConfig(model_path="mock", output_dir="/tmp/test_skip",
+                             probe_names=["math"])
+        runner = SweepRunner(config, adapter_class=MockAdapter)
+        runner.load_model()
+        path = runner.build_skip_path(0, 0)
+        assert path == list(range(runner.n_layers))
+
+    def test_build_skip_path_removes_layers(self):
+        """Skip path should exclude layers i..j-1."""
+        from sweep.runner import SweepRunner, SweepConfig
+        config = SweepConfig(model_path="mock", output_dir="/tmp/test_skip",
+                             probe_names=["math"])
+        runner = SweepRunner(config, adapter_class=MockAdapter)
+        runner.load_model()
+        # Skip layers 2,3,4 (i=2, j=5)
+        path = runner.build_skip_path(2, 5)
+        assert 2 not in path
+        assert 3 not in path
+        assert 4 not in path
+        assert 0 in path
+        assert 1 in path
+        assert 5 in path
+        expected = [0, 1] + list(range(5, runner.n_layers))
+        assert path == expected
+
+    def test_build_layer_path_duplicates_layers(self):
+        """Duplicate path should include layers i..j-1 twice."""
+        from sweep.runner import SweepRunner, SweepConfig
+        config = SweepConfig(model_path="mock", output_dir="/tmp/test_dup",
+                             probe_names=["math"])
+        runner = SweepRunner(config, adapter_class=MockAdapter)
+        runner.load_model()
+        path = runner.build_layer_path(2, 5)
+        # Layers 2,3,4 should appear twice
+        assert path.count(2) == 2
+        assert path.count(3) == 2
+        assert path.count(4) == 2
+        # Layer 0,1 appear once
+        assert path.count(0) == 1
+        assert path.count(1) == 1
+
+    def test_skip_sweep_runs(self, tmp_path):
+        """Skip mode sweep should complete and produce results."""
+        from sweep.runner import SweepRunner, SweepConfig
+        config = SweepConfig(
+            model_path="mock", output_dir=str(tmp_path),
+            probe_names=["math"], max_layers=4, max_block_size=2,
+            mode="skip",
+        )
+        runner = SweepRunner(config, adapter_class=MockAdapter)
+        results = runner.run()
+        assert len(results) > 1  # baseline + configs
+        # All non-baseline results should have mode="skip"
+        for r in results:
+            assert r.mode == "skip"
+
+    def test_both_mode_produces_separate_files(self, tmp_path):
+        """Mode=both should produce both result files."""
+        from sweep.runner import SweepRunner, SweepConfig
+        config = SweepConfig(
+            model_path="mock", output_dir=str(tmp_path),
+            probe_names=["math"], max_layers=4, max_block_size=2,
+            mode="both",
+        )
+        runner = SweepRunner(config, adapter_class=MockAdapter)
+        runner.run()
+        assert (tmp_path / "sweep_results_duplicate.json").exists()
+        assert (tmp_path / "sweep_results_skip.json").exists()
+        assert (tmp_path / "sweep_results.json").exists()
+
+        # Check each file has correct mode
+        with open(tmp_path / "sweep_results_duplicate.json") as f:
+            dup = json.load(f)
+        with open(tmp_path / "sweep_results_skip.json") as f:
+            skip = json.load(f)
+        for r in dup:
+            assert r["mode"] == "duplicate"
+        for r in skip:
+            assert r["mode"] == "skip"
+
+    def test_skip_path_length(self):
+        """Skip path should be shorter than original."""
+        from sweep.runner import SweepRunner, SweepConfig
+        config = SweepConfig(model_path="mock", output_dir="/tmp/test_skip",
+                             probe_names=["math"])
+        runner = SweepRunner(config, adapter_class=MockAdapter)
+        runner.load_model()
+        N = runner.n_layers
+        original = runner.build_layer_path(0, 0)
+        skip = runner.build_skip_path(2, 5)
+        assert len(original) == N
+        assert len(skip) == N - 3  # removed 3 layers
+
+
+class TestBuildOptimizedPath:
+    def test_no_modifications(self):
+        """No skip or dup regions should return identity."""
+        from sweep.runner import build_optimized_path
+        path = build_optimized_path(10, [], [])
+        assert path == list(range(10))
+
+    def test_skip_only(self):
+        """Skip regions should remove layers."""
+        from sweep.runner import build_optimized_path
+        path = build_optimized_path(10, skip_regions=[(3, 6)], duplicate_regions=[])
+        assert 3 not in path
+        assert 4 not in path
+        assert 5 not in path
+        assert path == [0, 1, 2, 6, 7, 8, 9]
+
+    def test_duplicate_only(self):
+        """Duplicate regions should repeat layers."""
+        from sweep.runner import build_optimized_path
+        path = build_optimized_path(10, skip_regions=[], duplicate_regions=[(2, 4)])
+        assert path.count(2) == 2
+        assert path.count(3) == 2
+        assert path.count(0) == 1
+
+    def test_skip_takes_priority(self):
+        """Overlapping skip and dup — skip wins."""
+        from sweep.runner import build_optimized_path
+        path = build_optimized_path(10, skip_regions=[(3, 5)], duplicate_regions=[(3, 6)])
+        # Layers 3,4 should be skipped (not duplicated)
+        assert 3 not in path
+        assert 4 not in path
+        # Layer 5 should be duplicated (not in skip range)
+        assert path.count(5) == 2
+
+    def test_combined_path_structure(self):
+        """Combined skip+dup should produce valid layer sequence."""
+        from sweep.runner import build_optimized_path
+        path = build_optimized_path(
+            n_layers=12,
+            skip_regions=[(8, 10)],
+            duplicate_regions=[(2, 4)],
+        )
+        # Layers 8,9 removed, layers 2,3 doubled
+        assert 8 not in path
+        assert 9 not in path
+        assert path.count(2) == 2
+        assert path.count(3) == 2
+        # First and last layers present
+        assert 0 in path
+        assert 11 in path
+
+
+class TestOverlayAnalysis:
+    def test_classify_region(self):
+        from analysis.heatmap import classify_region
+        assert classify_region(0.1, 0.0, threshold=0.03) == "double"
+        assert classify_region(0.0, 0.1, threshold=0.03) == "skip"
+        assert classify_region(0.0, 0.0, threshold=0.03) == "neutral"
+        assert classify_region(0.1, 0.1, threshold=0.03) == "ambiguous"
+        assert classify_region(0.01, 0.01, threshold=0.03) == "neutral"
+
+    def test_overlay_produces_recommendations(self, tmp_path):
+        """Overlay analysis should produce optimized_path_recommendations.json."""
+        from sweep.runner import SweepRunner, SweepConfig
+        # Run both mode
+        config = SweepConfig(
+            model_path="mock", output_dir=str(tmp_path),
+            probe_names=["math"], max_layers=4, max_block_size=2,
+            mode="both",
+        )
+        runner = SweepRunner(config, adapter_class=MockAdapter)
+        runner.run()
+
+        from analysis.heatmap import generate_overlay_analysis
+        dup_path = str(tmp_path / "sweep_results_duplicate.json")
+        skip_path = str(tmp_path / "sweep_results_skip.json")
+        analysis_dir = str(tmp_path / "analysis")
+        generate_overlay_analysis(dup_path, skip_path, analysis_dir)
+
+        recs_path = tmp_path / "analysis" / "optimized_path_recommendations.json"
+        assert recs_path.exists()
+        with open(recs_path) as f:
+            recs = json.load(f)
+        assert "math" in recs
+        assert "counts" in recs["math"]
+        assert "skip_regions" in recs["math"]
+        assert "double_regions" in recs["math"]
+        assert "optimized_path_hint" in recs["math"]

@@ -47,7 +47,9 @@ def main():
                         help="Use MockAdapter instead of ExLlamaV2 (for testing without GPU)")
     parser.add_argument("--timeout", type=float, default=30.0,
                         help="Timeout in seconds per config (default: 30)")
-    
+    parser.add_argument("--mode", choices=["duplicate", "skip", "both"], default="duplicate",
+                        help="Sweep mode: duplicate layers, skip layers, or both (default: duplicate)")
+
     args = parser.parse_args()
     
     # Resolve probe list
@@ -96,6 +98,8 @@ def main():
         from sweep.mock_adapter import MockAdapter
         adapter_class = MockAdapter
 
+    print(f"Mode: {args.mode}")
+
     # Run sweep
     config = SweepConfig(
         model_path=args.model,
@@ -105,24 +109,34 @@ def main():
         min_block_size=args.min_block,
         max_block_size=args.max_block,
         timeout_seconds=args.timeout,
+        mode=args.mode,
     )
 
     runner = SweepRunner(config, adapter_class=adapter_class)
     results = runner.run()
-    
+
     # Report best configs
     print("\n=== Best configurations ===")
     print(f"Overall best: {runner.best_config()}")
     for probe in probes:
         best = runner.best_config(probe=probe)
         print(f"Best for {probe}: ({best.i},{best.j}) delta={best.probe_deltas.get(probe, 0):.4f}")
-    
+
     # Analysis
     if args.analyze_after:
-        from analysis.heatmap import generate_all_plots
+        from analysis.heatmap import generate_all_plots, generate_overlay_analysis
         results_path = Path(args.output) / "sweep_results.json"
         analysis_dir = Path(args.output) / "analysis"
         generate_all_plots(str(results_path), str(analysis_dir))
+
+        # Overlay analysis when mode=both
+        if args.mode == "both":
+            dup_path = Path(args.output) / "sweep_results_duplicate.json"
+            skip_path = Path(args.output) / "sweep_results_skip.json"
+            if dup_path.exists() and skip_path.exists():
+                generate_overlay_analysis(
+                    str(dup_path), str(skip_path), str(analysis_dir)
+                )
 
 
 if __name__ == "__main__":

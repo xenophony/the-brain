@@ -10,6 +10,36 @@ For a model with N layers, config (i,j) runs layers 0..j-1, then loops back to i
 Layers i..j-1 execute twice. No weights are changed. (0,0) = original model.
 We sweep all valid (i,j) pairs, score each with domain probes, build heatmaps.
 
+### Sweep Modes
+The runner supports three modes via `--mode`:
+
+- **duplicate** (default): config (i,j) executes `[0..j-1, i..N-1]`.
+  Layers i..j-1 run twice. Tests which layers benefit from repetition.
+
+- **skip**: config (i,j) executes `[0..i-1, j..N-1]`.
+  Layers i..j-1 are removed entirely. Tests which layers are dispensable.
+
+- **both**: runs duplicate sweep then skip sweep sequentially. Saves results
+  separately (`sweep_results_duplicate.json`, `sweep_results_skip.json`) and
+  runs overlay analysis to classify each (i,j) region into four quadrants.
+
+### Four-Quadrant Overlay Classification
+When mode=both, overlay analysis compares dup_delta and skip_delta per (i,j):
+
+| Quadrant | Dup delta | Skip delta | Interpretation |
+|----------|-----------|------------|----------------|
+| **double** | high | low | Layer benefits from repetition — amplify |
+| **skip** | low | high | Layer is harmful — remove it |
+| **neutral** | low | low | Layer is passively useful — leave as-is |
+| **ambiguous** | high | high | Unclear — needs further investigation |
+
+Results written to `optimized_path_recommendations.json` per probe domain.
+
+### Optimized Path Builder
+`build_optimized_path(n_layers, skip_regions, duplicate_regions)` combines
+skip and duplicate recommendations into a single execution path.
+Skip regions take priority over duplicate regions if they overlap.
+
 ## Directory Structure
 ```
 llm-neuroanatomy/
@@ -17,22 +47,24 @@ llm-neuroanatomy/
 ├── README.md
 ├── requirements.txt
 ├── sweep/
-│   ├── runner.py           ← (i,j) sweep engine, checkpointing
-│   └── exllama_adapter.py  ← ExLlamaV2 wrapper with layer path injection
+│   ├── runner.py           ← (i,j) sweep engine (duplicate/skip/both modes)
+│   ├── exllama_adapter.py  ← ExLlamaV2 wrapper with layer path injection
+│   └── mock_adapter.py     ← MockAdapter for testing (random/perfect/terrible)
 ├── probes/
 │   ├── registry.py         ← BaseProbe, register_probe, get_probe
+│   ├── test_probes.py      ← 44 pytest tests (probes + sweep runner + overlay)
 │   ├── math/probe.py       ← COMPLETE
-│   ├── spatial/probe.py    ← COMPLETE - needs board generator upgrade
+│   ├── spatial/probe.py    ← COMPLETE (generated boards + probability density oracle)
 │   ├── code/probe.py       ← COMPLETE
-│   ├── eq/probe.py         ← STUB
-│   ├── factual/probe.py    ← STUB
-│   ├── language/probe.py   ← STUB
-│   ├── tool_use/probe.py   ← STUB
-│   ├── holistic/probe.py   ← STUB
-│   ├── planning/probe.py   ← NOT CREATED
-│   └── instruction/probe.py← NOT CREATED
+│   ├── eq/probe.py         ← COMPLETE
+│   ├── factual/probe.py    ← COMPLETE
+│   ├── language/probe.py   ← COMPLETE
+│   ├── tool_use/probe.py   ← COMPLETE
+│   ├── holistic/probe.py   ← COMPLETE
+│   ├── planning/probe.py   ← COMPLETE
+│   └── instruction/probe.py← COMPLETE
 ├── analysis/
-│   └── heatmap.py          ← heatmap, skyline, circuit boundary detection
+│   └── heatmap.py          ← heatmap, skyline, circuit boundaries, overlay analysis
 ├── results/                ← sweep output goes here (gitignored)
 ├── models/                 ← downloaded models go here (gitignored)
 └── scripts/

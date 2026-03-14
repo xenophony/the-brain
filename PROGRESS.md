@@ -54,4 +54,19 @@
 [02:17] DONE: Full mock sweep with all 10 probes completed (26 configs, 8 layers)
 [02:17] DONE: All 10 heatmaps + skyline + circuit_boundaries.json generated
 [02:17] DONE: MORNING_SUMMARY.md written with status, blockers, next commands, and decisions needed
-[02:18] NEXT: Commit all work. Pipeline ready for cloud GPU deployment.
+[02:18] DONE: Committed all probe and infrastructure work.
+
+## Pruning Sweep Mode
+[02:20] DONE: Added build_skip_path() to sweep/runner.py — skip config (i,j) removes layers i..j-1
+[02:21] DONE: Added SweepConfig.mode field ("duplicate", "skip", "both") and ConfigResult.mode field
+[02:22] DONE: Refactored run() into run() + _run_single_sweep() to support both modes
+[02:22] DONE: Added _save_results() for mode=both to write separate result files
+[02:23] DONE: Added --mode flag to scripts/run_sweep.py (choices: duplicate, skip, both)
+[02:24] DONE: Added classify_region() and generate_overlay_analysis() to analysis/heatmap.py
+[02:24] DONE: Overlay produces: overlay scatter plots, quadrant map heatmaps, optimized_path_recommendations.json
+[02:25] DONE: Added build_optimized_path() to runner.py — combines skip and duplicate regions into single path
+[02:26] DONE: Added 13 new tests: TestSweepRunner (6), TestBuildOptimizedPath (5), TestOverlayAnalysis (2)
+[02:27] DONE: All 44 tests passing
+[02:28] DONE: Smoke test mode=both completed — overlay_math.png, quadrant_map_math.png, optimized_path_recommendations.json generated
+[02:28] DONE: Updated CLAUDE.md with pruning sweep documentation (modes, quadrant table, optimized path builder)
+[02:29] NEXT: Commit pruning sweep work.
