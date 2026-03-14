@@ -228,3 +228,14 @@
 [08:04] DONE: Updated sweep/test_api_adapters.py — added OpenRouterAdapter import, missing-key test, adapter map assertion, live test class
 [08:04] DONE: Removed all claude-opus references across entire codebase (verified with grep)
 [08:05] DONE: All 192 tests passing (178 non-API + 14 API-skipped), 0 failures
+
+## Scoring Extraction Fixes for Real Model Output
+[10:00] DONE: FIX 1 — Code probe: new extraction pipeline handles ```python fences, prose before/after, searches for def func_name( anywhere
+[10:05] DONE: FIX 2 — Consistency probe: _extract_final_answer uses rfind (last occurrence), expanded markers, bolded text fallback. max_new_tokens 80->300. _answers_match uses last-number extraction.
+[10:10] DONE: FIX 3 — EQ probe: new _extract_eq_digit uses last word-bounded digit, not first digit (avoids echoed scenario text)
+[10:12] DONE: FIX 4 — Spatial probe: verified extraction regex already handles all real model patterns. No changes needed.
+[10:15] DONE: FIX 5 — Added BaseProbe.log_responses flag and item_results to _make_result. Code/EQ/consistency/spatial probes collect per-item details when enabled.
+[10:18] DONE: FIX 6 — Updated run_baselines.py: sets log_responses=True, saves item_results to baseline_responses.json, prints 2 sample responses per probe.
+[10:20] DONE: All 81 tests passing. No regressions.
+[10:22] DONE: Created SCORING_FIXES.md with detailed descriptions of each fix.
+[10:22] NEXT: Ready for re-running baselines with fixed extraction.

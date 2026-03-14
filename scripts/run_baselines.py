@@ -62,6 +62,7 @@ ALL_PROBES = [
 
 OUTPUT_DIR = Path(__file__).parent.parent / "results" / "baselines"
 OUTPUT_FILE = OUTPUT_DIR / "baseline_scores.json"
+RESPONSES_FILE = OUTPUT_DIR / "baseline_responses.json"
 
 # Parallelism config
 MAX_PARALLEL_PROBES = 6  # max concurrent probes per model
@@ -226,6 +227,7 @@ def _run_single_probe(adapter, probe_name: str, progress_counter: dict,
     def _target():
         try:
             probe = get_probe(probe_name)
+            probe.log_responses = True
             result_holder[0] = probe.run(adapter)
         except Exception as exc:
             error_holder[0] = exc
@@ -273,8 +275,10 @@ def _run_single_probe(adapter, probe_name: str, progress_counter: dict,
 
     # Success
     result = result_holder[0]
+    item_results = None
     if isinstance(result, dict):
         score = result.get("score", 0.0)
+        item_results = result.get("item_results", None)
     else:
         score = float(result)
 
@@ -285,12 +289,28 @@ def _run_single_probe(adapter, probe_name: str, progress_counter: dict,
         print(f"\r  [{model_name}] {done}/{total} probes | "
               f"{probe_name}: {score:.3f} ({elapsed:.1f}s)", end="", flush=True)
 
+    # Print sample responses (one good, one zero if exists)
+    if item_results:
+        good = [r for r in item_results if r.get("score", 0) > 0.5]
+        bad = [r for r in item_results if r.get("score", 0) == 0.0]
+        samples = []
+        if good:
+            samples.append(("GOOD", good[0]))
+        if bad:
+            samples.append(("ZERO", bad[0]))
+        if samples:
+            print(f"\n    --- {probe_name} samples ---")
+            for label, s in samples[:2]:
+                resp = s.get("response", "")[:120]
+                print(f"    [{label} score={s.get('score', '?')}] {resp!r}")
+
     return {
         "probe": probe_name,
         "score": round(score, 4),
         "n_items": n_items,
         "latency_seconds": round(elapsed, 2),
         "error": None,
+        "item_results": item_results,
     }
 
 
@@ -327,6 +347,7 @@ def run_baselines(
 
     # --- Real run -------------------------------------------------------
     results = _load_existing(OUTPUT_FILE) if resume else {}
+    responses = _load_existing(RESPONSES_FILE) if resume else {}
     checkpoint_lock = Lock()
 
     # Filter to available models
@@ -404,6 +425,13 @@ def run_baselines(
                         "error": probe_result["error"],
                     }
                     _atomic_save(results, OUTPUT_FILE)
+
+                    # Save item-level responses if available
+                    if probe_result.get("item_results"):
+                        if model_name not in responses:
+                            responses[model_name] = {}
+                        responses[model_name][pname] = probe_result["item_results"]
+                        _atomic_save(responses, RESPONSES_FILE)
 
         model_elapsed = time.perf_counter() - model_t0
         n_completed = len(probes_to_run)

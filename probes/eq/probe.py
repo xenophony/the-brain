@@ -9,6 +9,7 @@ Output: single digit 0-9.
 Maps to: limbic system / emotional processing circuits.
 """
 
+import re
 from probes.registry import BaseProbe, register_probe
 
 EASY_ITEMS = [
@@ -149,6 +150,39 @@ HARD_ITEMS = [
 SCENARIOS = EASY_ITEMS + HARD_ITEMS
 
 
+def _extract_eq_digit(response: str) -> int | None:
+    """Extract emotion intensity digit from response.
+
+    Uses the LAST single digit to avoid catching digits from
+    echoed scenario text (e.g. "I would rate this a 7").
+    """
+    r = response.strip()
+    # Try last single digit (word-bounded) in response
+    digits = re.findall(r'\b(\d)\b', r)
+    if digits:
+        return int(digits[-1])
+    # Try any digit (last one)
+    for ch in reversed(r):
+        if ch.isdigit():
+            return int(ch)
+    return None
+
+
+def _eq_digit_score(response: str, expected: int) -> float:
+    """Score an EQ response with partial credit for near-misses."""
+    got = _extract_eq_digit(response)
+    if got is None:
+        return 0.0
+    if got == expected:
+        return 1.0
+    diff = abs(got - expected)
+    if diff == 1:
+        return 0.5
+    if diff == 2:
+        return 0.25
+    return 0.0
+
+
 @register_probe
 class EQProbe(BaseProbe):
     name = "eq"
@@ -156,19 +190,24 @@ class EQProbe(BaseProbe):
 
     def run(self, model) -> dict:
         easy_scores = []
-        for scenario in EASY_ITEMS:
-            response = model.generate_short(
-                scenario["prompt"], max_new_tokens=5, temperature=0.0
-            )
-            score = self.expected_digit_score(response, scenario["expected"])
-            easy_scores.append(score)
-
         hard_scores = []
-        for scenario in HARD_ITEMS:
-            response = model.generate_short(
-                scenario["prompt"], max_new_tokens=5, temperature=0.0
-            )
-            score = self.expected_digit_score(response, scenario["expected"])
-            hard_scores.append(score)
+        item_results = [] if self.log_responses else None
 
-        return self._make_result(easy_scores, hard_scores)
+        for difficulty, items in [("easy", EASY_ITEMS), ("hard", HARD_ITEMS)]:
+            scores = easy_scores if difficulty == "easy" else hard_scores
+            for scenario in items:
+                response = model.generate_short(
+                    scenario["prompt"], max_new_tokens=5, temperature=0.0
+                )
+                score = _eq_digit_score(response, scenario["expected"])
+                scores.append(score)
+                if item_results is not None:
+                    item_results.append({
+                        "difficulty": difficulty,
+                        "expected": scenario["expected"],
+                        "response": response[:200],
+                        "extracted": _extract_eq_digit(response),
+                        "score": score,
+                    })
+
+        return self._make_result(easy_scores, hard_scores, item_results)

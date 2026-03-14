@@ -343,19 +343,22 @@ class SpatialProbe(BaseProbe):
         self._ensure_boards()
 
         easy_scores = []
-        for board, _ship_cells, _placements in self._easy_boards:
-            ascii_board = board_to_ascii(board)
-            prompt = PROMPT_TEMPLATE.format(board_ascii=ascii_board)
-            response = model.generate_short(prompt, max_new_tokens=5, temperature=0.0)
-            score = score_response(response, board)
-            easy_scores.append(score)
-
         hard_scores = []
-        for board, _ship_cells, _placements in self._hard_boards:
-            ascii_board = board_to_ascii(board)
-            prompt = PROMPT_TEMPLATE.format(board_ascii=ascii_board)
-            response = model.generate_short(prompt, max_new_tokens=5, temperature=0.0)
-            score = score_response(response, board)
-            hard_scores.append(score)
+        item_results = [] if self.log_responses else None
 
-        return self._make_result(easy_scores, hard_scores)
+        for difficulty, boards in [("easy", self._easy_boards), ("hard", self._hard_boards)]:
+            scores = easy_scores if difficulty == "easy" else hard_scores
+            for board, _ship_cells, _placements in boards:
+                ascii_board = board_to_ascii(board)
+                prompt = PROMPT_TEMPLATE.format(board_ascii=ascii_board)
+                response = model.generate_short(prompt, max_new_tokens=5, temperature=0.0)
+                score = score_response(response, board)
+                scores.append(score)
+                if item_results is not None:
+                    item_results.append({
+                        "difficulty": difficulty,
+                        "response": response[:200],
+                        "score": score,
+                    })
+
+        return self._make_result(easy_scores, hard_scores, item_results)

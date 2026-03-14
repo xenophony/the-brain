@@ -264,21 +264,38 @@ CHALLENGES = EASY_ITEMS + HARD_ITEMS
 def score_code(response: str, challenge: dict) -> float:
     """Execute generated code against test cases, return fraction passing."""
     func_header = challenge["extract_after"]
+    func_name = func_header.split("(")[0].replace("def ", "").strip()
+
     body = response.strip()
-    if body.startswith("def "):
+
+    # 1. Try to extract from ```python ... ``` code fence
+    fence_match = re.search(r'```(?:python)?\s*\n(.*?)```', body, re.DOTALL)
+    if fence_match:
+        body = fence_match.group(1).strip()
+
+    # 2. Find the function definition line
+    lines = body.split("\n")
+    func_start = -1
+    for i, line in enumerate(lines):
+        if line.strip().startswith(f"def {func_name}("):
+            func_start = i
+            break
+
+    if func_start == -1:
+        # No function found — try prepending the header
+        if not body.startswith("def "):
+            body = func_header + "\n" + body
         code = body
     else:
-        code = func_header + "\n" + body
+        # Extract from function start to end of function body
+        func_lines = [lines[func_start]]
+        for line in lines[func_start + 1:]:
+            if line.strip() and not line[0].isspace() and not line.strip().startswith("#"):
+                break
+            func_lines.append(line)
+        code = "\n".join(func_lines)
 
-    # Take only the function body
-    lines = code.split("\n")
-    clean_lines = [lines[0]]
-    for line in lines[1:]:
-        if line.strip() and not line[0].isspace() and not line.strip().startswith("#"):
-            break
-        clean_lines.append(line)
-    code = "\n".join(clean_lines)
-
+    # Execute against test cases
     passed = 0
     total = len(challenge["test_cases"])
 
@@ -302,19 +319,23 @@ class CodeProbe(BaseProbe):
 
     def run(self, model) -> dict:
         easy_scores = []
-        for challenge in EASY_ITEMS:
-            response = model.generate_short(
-                challenge["prompt"], max_new_tokens=150, temperature=0.0
-            )
-            score = score_code(response, challenge)
-            easy_scores.append(score)
-
         hard_scores = []
-        for challenge in HARD_ITEMS:
-            response = model.generate_short(
-                challenge["prompt"], max_new_tokens=150, temperature=0.0
-            )
-            score = score_code(response, challenge)
-            hard_scores.append(score)
+        item_results = [] if self.log_responses else None
 
-        return self._make_result(easy_scores, hard_scores)
+        for difficulty, items in [("easy", EASY_ITEMS), ("hard", HARD_ITEMS)]:
+            scores = easy_scores if difficulty == "easy" else hard_scores
+            for challenge in items:
+                response = model.generate_short(
+                    challenge["prompt"], max_new_tokens=150, temperature=0.0
+                )
+                score = score_code(response, challenge)
+                scores.append(score)
+                if item_results is not None:
+                    item_results.append({
+                        "difficulty": difficulty,
+                        "func": challenge["extract_after"],
+                        "response": response[:500],
+                        "score": score,
+                    })
+
+        return self._make_result(easy_scores, hard_scores, item_results)
