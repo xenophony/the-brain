@@ -194,7 +194,13 @@
 
 ## Documentation — Probe Review
 [07:30] DONE: Regenerated PROBE_REVIEW.md from scratch — 18 probes with verbatim examples, scoring, expected ranges, ceiling risks, orthogonality notes, summary table, Tier 1 sweep recommendation
-[07:30] NEXT: API adapter updates (OpenRouter, Gemini 3 Pro, remove Opus).
+[07:30] DONE: API adapter updates (OpenRouter, Gemini 3 Pro, remove Opus).
+
+## Probe Fixes from Human Review
+[08:10] DONE: FIX 1 — temporal probe Type A: replaced 2 of 4 all-no questions with yes-answer scenarios (birds singing after sunrise, plant growing after rain). Now 2 yes + 2 no.
+[08:10] DONE: FIX 2 — noise_robustness: replaced 3 over-represented science/math questions with history (WW2 end), language (opposite of ancient), food/culture (miso soup ingredient). Now 2 geography, 2 science, 2 math, 1 history, 1 general, 1 language, 1 food/culture.
+[08:10] DONE: Updated MockAdapter for all changed questions (temporal yes/no, noise_robustness clean prompts, fragile mode keywords)
+[08:10] DONE: All 192 tests passing, 14 skipped
 
 ## OpenRouter Integration + claude-opus Removal
 [08:00] DONE: Added OpenRouterAdapter to sweep/api_adapters.py — OpenAI-compatible client, exponential backoff, API logging

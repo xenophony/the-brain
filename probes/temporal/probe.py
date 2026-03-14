@@ -31,18 +31,18 @@ QUESTIONS = [
     {
         "type": "A",
         "prompt": (
-            "Event chain: Seeds are planted. Rain falls. Sprouts appear. Flowers bloom. "
-            "Could flowers bloom before sprouts appear? Answer only yes or no."
+            "Event chain: The sun rises. Then birds start singing. Then people wake up. "
+            "Could the birds have started singing after the sun rose? Answer only yes or no."
         ),
-        "answer": "no",
+        "answer": "yes",
     },
     {
         "type": "A",
         "prompt": (
-            "Event chain: An egg is laid. The egg hatches. The chick grows feathers. The bird flies. "
-            "Could the egg hatch before it is laid? Answer only yes or no."
+            "Event chain: A seed is planted. Then it rains. Then the plant grows. "
+            "Could the plant have grown after it rained? Answer only yes or no."
         ),
-        "answer": "no",
+        "answer": "yes",
     },
     {
         "type": "A",

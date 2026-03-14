@@ -71,12 +71,12 @@ BASE_QUESTIONS = [
     {
         "id": 5,
         "versions": {
-            "A": "What is the freezing point of water in Celsius? Answer with only the number.",
-            "B": "At what temperature in Celsius does water freeze? Answer with only the number.",
-            "C": "My car's thermometer showed 5 degrees today, and I thought about ice formation. What is the freezing point of water in Celsius? Answer with only the number.",
-            "D": "freezing point of water celsius? just the number",
+            "A": "In what year did World War 2 end? Answer with only the number.",
+            "B": "State the year World War II concluded. Answer with only the number.",
+            "C": "I was reading about the Marshall Plan and European reconstruction after the war. In what year did World War 2 end? Answer with only the number.",
+            "D": "when did ww2 end? just the year",
         },
-        "accept": ["0", "zero"],
+        "accept": ["1945"],
     },
     {
         "id": 6,
@@ -101,22 +101,22 @@ BASE_QUESTIONS = [
     {
         "id": 8,
         "versions": {
-            "A": "What is the chemical formula for table salt? Answer in chemical notation.",
-            "B": "Write the chemical formula of sodium chloride. Answer in chemical notation.",
-            "C": "While seasoning my steak with various spices and herbs, I grabbed the salt shaker. What is the chemical formula for table salt? Answer in chemical notation.",
-            "D": "chemical formula for salt? just the formula",
+            "A": "What is the opposite of the word 'ancient'? Answer with one word.",
+            "B": "Name the antonym of 'ancient'. Answer with one word.",
+            "C": "I was reading a novel set in ancient Rome and wondered about English vocabulary. What is the opposite of the word 'ancient'? Answer with one word.",
+            "D": "whats the opposite of ancient? one word",
         },
-        "accept": ["nacl"],
+        "accept": ["modern", "new", "recent", "contemporary"],
     },
     {
         "id": 9,
         "versions": {
-            "A": "What is the square root of 144? Answer with only the number.",
-            "B": "Calculate the square root of 144. Answer with only the number.",
-            "C": "I was helping my nephew with his algebra homework about exponents. What is the square root of 144? Answer with only the number.",
-            "D": "sqrt of 144? just the number",
+            "A": "What is the main ingredient in traditional Japanese miso soup? Answer with one word.",
+            "B": "Name the primary ingredient of miso soup. Answer with one word.",
+            "C": "After trying sushi for the first time at a Japanese restaurant, I also ordered soup. What is the main ingredient in traditional Japanese miso soup? Answer with one word.",
+            "D": "main ingredient in miso soup? one word",
         },
-        "accept": ["12", "twelve"],
+        "accept": ["miso", "soybean", "soy"],
     },
 ]
 

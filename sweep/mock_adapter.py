@@ -320,17 +320,17 @@ class MockAdapter:
             return "6"
         if "largest planet" in p or "biggest planet" in p:
             return "Jupiter"
-        if ("freezing point" in p or "does water freeze" in p) and ("water" in p or "celsius" in p):
-            return "0"
+        if "world war 2" in p or "world war ii" in p or "ww2" in p:
+            return "1945"
         if ("mixing red and blue" in p or "combining red and blue" in p
                 or "red + blue" in p):
             return "purple"
         if "how many continents" in p or "number of continents" in p:
             return "7"
-        if "table salt" in p or "sodium chloride" in p or "formula for salt" in p:
-            return "NaCl"
-        if "square root of 144" in p or "sqrt of 144" in p:
-            return "12"
+        if "opposite" in p and "ancient" in p or "antonym" in p and "ancient" in p:
+            return "modern"
+        if "miso soup" in p or "miso" in p and "ingredient" in p:
+            return "miso"
 
         # --- Holistic/analogy probe ---
         if "is to" in p and ("as" in p or "analogy" in p):
@@ -708,8 +708,14 @@ class MockAdapter:
     def _perfect_temporal(self, prompt: str) -> str:
         """Return correct answers for temporal probe questions."""
         p = prompt.lower()
-        # Type A: causal chain — answer is always "no"
+        # Type A: causal chain — 2 yes, 2 no
         if "event chain:" in p and "could" in p:
+            # Yes answers: events consistent with stated chain order
+            if "birds" in p and "after the sun" in p:
+                return "yes"
+            if "plant" in p and "after it rained" in p:
+                return "yes"
+            # No answers: events violating stated chain order
             return "no"
         # Type B: relative time
         if "alice arrived on monday" in p:
@@ -844,11 +850,11 @@ class MockAdapter:
         "what element has the chemical symbol 'o'? answer with one word.",
         "how many sides does a hexagon have? answer with only the number.",
         "what is the largest planet in our solar system? answer with one word.",
-        "what is the freezing point of water in celsius? answer with only the number.",
+        "in what year did world war 2 end? answer with only the number.",
         "what color do you get by mixing red and blue? answer with one word.",
         "how many continents are there on earth? answer with only the number.",
-        "what is the chemical formula for table salt? answer in chemical notation.",
-        "what is the square root of 144? answer with only the number.",
+        "what is the opposite of the word 'ancient'? answer with one word.",
+        "what is the main ingredient in traditional japanese miso soup? answer with one word.",
     }
 
     # ------------------------------------------------------------------ #
@@ -961,11 +967,11 @@ class MockAdapter:
             "symbol o", "symbol 'o'", "chemical symbol",
             "hexagon", "sides",
             "largest planet", "biggest planet",
-            "freezing point", "water freeze",
+            "world war 2", "world war ii", "ww2",
             "red and blue", "red + blue", "mixing red",
             "continents",
-            "table salt", "sodium chloride", "formula for salt",
-            "square root of 144", "sqrt of 144",
+            "opposite", "ancient", "antonym",
+            "miso soup", "miso",
         ]
         if any(kw in p for kw in nr_keywords):
             return "banana"
