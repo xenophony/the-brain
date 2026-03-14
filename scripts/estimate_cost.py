@@ -23,7 +23,7 @@ PRICING = {  # (input_per_1M, output_per_1M) USD, updated 2026-03
     "llama-70b": (0.40, 0.40),     # OpenRouter Llama 3.3 70B
     "qwen-30b": (0.30, 0.30),      # OpenRouter Qwen 32B
     "claude-sonnet": (3.00, 15.00), # OpenRouter Claude Sonnet 4
-    "gemini-3-pro": (2.00, 12.00),  # OpenRouter Gemini 3 Pro Preview
+    "gemini-2.5-pro": (2.00, 12.00),  # OpenRouter Gemini 2.5 Pro Preview
 }
 
 # Map model registry names to pricing keys (direct mapping now)
@@ -32,16 +32,16 @@ _PRICING_KEY = {
     "llama-70b": "llama-70b",
     "qwen-30b": "qwen-30b",
     "claude-sonnet": "claude-sonnet",
-    "gemini-3-pro": "gemini-3-pro",
+    "gemini-2.5-pro": "gemini-2.5-pro",
 }
 
 # Probe token estimates
-N_PROBES = 18
+N_PROBES = 19
 EST_ITEMS_PER_PROBE = 15
 EST_INPUT_TOKENS_PER_ITEM = 200
 EST_OUTPUT_TOKENS_PER_ITEM = 15
 
-ALL_MODELS = ["llama-8b", "llama-70b", "qwen-30b", "claude-sonnet", "gemini-3-pro"]
+ALL_MODELS = ["llama-8b", "llama-70b", "qwen-30b", "claude-sonnet", "gemini-2.5-pro"]
 
 
 # ---------------------------------------------------------------------------

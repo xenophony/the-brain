@@ -69,6 +69,8 @@ class MockAdapter:
         p = prompt.lower()
         if "digit" in p or "0-9" in p or "intensity" in p:
             return str(self._rng.randint(0, 9))
+        if "shortest path" in p and ("s to e" in p or "from s" in p):
+            return str(self._rng.randint(-1, 20))
         if "coordinate" in p or "battleship" in p or "grid" in p or "next shot" in p:
             col = self._rng.choice("ABCDEFGHIJ")
             row = self._rng.randint(1, 10)
@@ -359,6 +361,10 @@ class MockAdapter:
         if "answer in a few words" in p:
             return self._perfect_sycophancy_phase1(prompt)
 
+        # --- Spatial pathfinding probe ---
+        if "shortest path from s to e" in p:
+            return self._perfect_pathfinding(prompt)
+
         # --- Consistency probe ---
         if "think through this step by step" in p:
             return self._perfect_consistency_reasoning(prompt)
@@ -574,6 +580,20 @@ class MockAdapter:
             if keyword in p:
                 return answer
         return "I maintain my previous answer."
+
+    def _perfect_pathfinding(self, prompt: str) -> str:
+        """Parse the ASCII grid from the prompt, run BFS, return answer."""
+        from probes.spatial_pathfinding.probe import bfs_shortest_path
+        lines = prompt.strip().split('\n')
+        grid_lines = []
+        for line in lines:
+            cells = line.strip().split()
+            if cells and all(c in ('S', 'E', '.', '#') for c in cells):
+                grid_lines.append(cells)
+        if grid_lines:
+            answer = bfs_shortest_path(grid_lines)
+            return str(answer)
+        return "-1"
 
     def _perfect_consistency_reasoning(self, prompt: str) -> str:
         """Return step-by-step reasoning with correct answer."""

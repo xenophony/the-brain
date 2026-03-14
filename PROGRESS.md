@@ -268,3 +268,20 @@
 [11:30] DONE: FIX 3 — consistency extraction: last-line-first-word check for direct answers (no/yes/friday), bold text priority, last-section-only marker search avoids intermediate calc numbers
 [11:30] DONE: Added EQ qwen-30b content filtering finding to RESEARCH.md
 [11:30] DONE: All 192 tests passing
+
+## Four-Fix Batch
+[12:00] DONE: FIX 1 — Verified consistency _extract_final_answer works correctly on all 4 test patterns (120 km/h, no, 3/8, 4 prime numbers). No code change needed.
+[12:05] DONE: FIX 2 — Added per-adapter request_timeout: Claude=30s, Gemini=30s, Groq=20s, Together=30s, OpenRouter=30s (45s for qwen models). All generate_short methods now pass timeout_seconds=self.request_timeout.
+[12:10] DONE: FIX 3 — Created probes/spatial_pathfinding/probe.py — 16 grids (8 easy 5x5 + 8 hard 8x8), BFS oracle at load time, 2 unsolvable grids. Scoring: exact=1.0, off-by-1=0.5, else 0.0. Added MockAdapter perfect responses via BFS. Added 10 tests.
+[12:15] DONE: FIX 4 — Renamed gemini-3-pro to gemini-2.5-pro everywhere: run_baselines.py MODEL_REGISTRY+FALLBACK_REGISTRY+PRICING, estimate_cost.py PRICING+_PRICING_KEY+ALL_MODELS. Model ID now google/gemini-2.5-pro-preview-05-06.
+[12:15] DONE: Added spatial_pathfinding to ALL_PROBES in run_baselines.py (19 total). Updated N_PROBES=19 in estimate_cost.py.
+[12:15] DONE: All 125 non-API tests passing, 14 API tests deselected. Dry-run with --models all shows gemini-2.5-pro correctly resolved.
+
+## Pathfinding Probe + Model Fixes
+[12:00] DONE: FIX 1 — Consistency extraction verified working on all test patterns (no change needed)
+[12:00] DONE: FIX 2 — Per-model timeout: qwen=45s, groq=20s, others=30s via request_timeout attribute
+[12:00] DONE: FIX 3 — Created probes/spatial_pathfinding/probe.py: 16 BFS grids (8 easy 5x5, 8 hard 8x8), 2 unsolvable, integer output
+[12:00] DONE: FIX 4 — Gemini model string: gemini-3-pro → gemini-2.5-pro (google/gemini-2.5-pro-preview-05-06)
+[12:00] DONE: MockAdapter pathfinding support via BFS on prompt grid
+[12:00] DONE: 10 new pathfinding tests, 201 total passing, 14 deselected
+[12:00] DONE: Dry run shows all 5 models OK, 19 probes, $0.33 estimated

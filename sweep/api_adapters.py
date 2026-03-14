@@ -149,6 +149,7 @@ class ClaudeAdapter(BaseAPIAdapter):
     """Adapter for Anthropic Claude models via the Messages API."""
 
     rate_limit_workers = 5  # conservative — Anthropic rate limits
+    request_timeout = 30
 
     def __init__(self, model: str = "claude-sonnet-4-20250514"):
         super().__init__(model=model, provider="claude")
@@ -178,7 +179,7 @@ class ClaudeAdapter(BaseAPIAdapter):
                     temperature=temperature,
                     messages=[{"role": "user", "content": prompt}],
                 )
-            msg = _retry_with_backoff(_call)
+            msg = _retry_with_backoff(_call, timeout_seconds=self.request_timeout)
             response_text = msg.content[0].text if msg.content else ""
         except Exception as exc:
             error_msg = str(exc)
@@ -208,6 +209,7 @@ class GeminiAdapter(BaseAPIAdapter):
     """Adapter for Google Gemini models via google-generativeai SDK."""
 
     rate_limit_workers = 5  # conservative — Google rate limits
+    request_timeout = 30
 
     def __init__(self, model: str = "gemini-2.5-pro-preview-05-06"):
         super().__init__(model=model, provider="gemini")
@@ -241,7 +243,7 @@ class GeminiAdapter(BaseAPIAdapter):
                     prompt,
                     generation_config=generation_config,
                 )
-            resp = _retry_with_backoff(_call)
+            resp = _retry_with_backoff(_call, timeout_seconds=self.request_timeout)
             response_text = (resp.text or "") if hasattr(resp, 'text') else ""
         except Exception as exc:
             error_msg = str(exc)
@@ -267,6 +269,7 @@ class GroqAdapter(BaseAPIAdapter):
     """Adapter for Groq inference API (OpenAI-compatible chat completions)."""
 
     rate_limit_workers = 10  # Groq has generous rate limits
+    request_timeout = 20
 
     def __init__(self, model: str = "llama-3.1-8b-instant"):
         super().__init__(model=model, provider="groq")
@@ -296,7 +299,7 @@ class GroqAdapter(BaseAPIAdapter):
                     max_tokens=max_new_tokens,
                     temperature=temperature,
                 )
-            resp = _retry_with_backoff(_call)
+            resp = _retry_with_backoff(_call, timeout_seconds=self.request_timeout)
             response_text = (resp.choices[0].message.content or "") if resp.choices else ""
         except Exception as exc:
             error_msg = str(exc)
@@ -320,6 +323,8 @@ class GroqAdapter(BaseAPIAdapter):
 
 class TogetherAdapter(BaseAPIAdapter):
     """Adapter for Together AI inference (OpenAI-compatible chat completions)."""
+
+    request_timeout = 30
 
     def __init__(self, model: str = "meta-llama/Llama-3.1-8B-Instruct"):
         super().__init__(model=model, provider="together")
@@ -349,7 +354,7 @@ class TogetherAdapter(BaseAPIAdapter):
                     max_tokens=max_new_tokens,
                     temperature=temperature,
                 )
-            resp = _retry_with_backoff(_call)
+            resp = _retry_with_backoff(_call, timeout_seconds=self.request_timeout)
             response_text = (resp.choices[0].message.content or "") if resp.choices else ""
         except Exception as exc:
             error_msg = str(exc)
@@ -375,11 +380,13 @@ class OpenRouterAdapter(BaseAPIAdapter):
     """OpenRouter API adapter — single key for multiple providers."""
 
     rate_limit_workers = 10  # OpenRouter has generous rate limits
+    request_timeout = 30
 
     def __init__(self, model: str = "meta-llama/llama-3.1-8b-instruct"):
         super().__init__(model=model, provider="openrouter")
         self.model_id = model
         self.num_layers = None
+        self.request_timeout = 45 if "qwen" in model.lower() else 30
         api_key = os.environ.get("OPENROUTER_API_KEY")
         if not api_key:
             raise ValueError(
@@ -409,7 +416,7 @@ class OpenRouterAdapter(BaseAPIAdapter):
                     max_tokens=max_new_tokens,
                     temperature=temperature,
                 )
-            resp = _retry_with_backoff(_call)
+            resp = _retry_with_backoff(_call, timeout_seconds=self.request_timeout)
             response_text = (resp.choices[0].message.content or "") if resp.choices else ""
         except Exception as exc:
             error_msg = str(exc)

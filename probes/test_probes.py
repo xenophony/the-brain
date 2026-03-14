@@ -262,6 +262,64 @@ class TestSpatialProbe:
 #  Individual scoring function tests                                   #
 # ------------------------------------------------------------------ #
 
+class TestSpatialPathfindingProbe:
+    def test_perfect_score(self, perfect_model):
+        probe = get_probe("spatial_pathfinding")
+        result = probe.run(perfect_model)
+        score = _extract_score(result)
+        assert score > 0.9, f"Spatial pathfinding probe perfect score too low: {score}"
+
+    def test_terrible_score(self, terrible_model):
+        probe = get_probe("spatial_pathfinding")
+        result = probe.run(terrible_model)
+        score = _extract_score(result)
+        assert score < 0.3, f"Spatial pathfinding probe terrible score too high: {score}"
+
+    def test_bfs_simple(self):
+        from probes.spatial_pathfinding.probe import bfs_shortest_path
+        grid = [['S', '.', 'E']]
+        assert bfs_shortest_path(grid) == 2
+
+    def test_bfs_unsolvable(self):
+        from probes.spatial_pathfinding.probe import bfs_shortest_path
+        grid = [['S', '#', 'E']]
+        assert bfs_shortest_path(grid) == -1
+
+    def test_bfs_2d(self):
+        from probes.spatial_pathfinding.probe import bfs_shortest_path
+        grid = [
+            ['S', '.', '.'],
+            ['#', '#', '.'],
+            ['.', '.', 'E'],
+        ]
+        assert bfs_shortest_path(grid) == 4
+
+    def test_scoring_exact(self):
+        from probes.spatial_pathfinding.probe import score_pathfinding
+        assert score_pathfinding("8", 8) == 1.0
+        assert score_pathfinding("-1", -1) == 1.0
+
+    def test_scoring_off_by_one(self):
+        from probes.spatial_pathfinding.probe import score_pathfinding
+        assert score_pathfinding("9", 8) == 0.5
+        assert score_pathfinding("7", 8) == 0.5
+
+    def test_scoring_wrong(self):
+        from probes.spatial_pathfinding.probe import score_pathfinding
+        assert score_pathfinding("42", 8) == 0.0
+        assert score_pathfinding("banana", 8) == 0.0
+
+    def test_all_items_have_answers(self):
+        from probes.spatial_pathfinding.probe import EASY_ITEMS, HARD_ITEMS
+        assert len(EASY_ITEMS) == 8
+        assert len(HARD_ITEMS) == 8
+        for item in EASY_ITEMS + HARD_ITEMS:
+            assert isinstance(item["answer"], int)
+        # Exactly 2 unsolvable
+        unsolvable = [i for i in EASY_ITEMS + HARD_ITEMS if i["answer"] == -1]
+        assert len(unsolvable) == 2
+
+
 class TestScoringFunctions:
     def test_math_scoring(self):
         from probes.math.probe import score_math
