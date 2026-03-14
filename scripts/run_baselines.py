@@ -489,12 +489,40 @@ def main():
         print(f"Warning: unknown probes {bad}, skipping them")
         probes = [p for p in probes if p in available]
 
-    run_baselines(
+    results = run_baselines(
         model_names=models,
         probe_names=probes,
         dry_run=args.dry_run,
         resume=not args.no_resume,
     )
+
+    # Auto-generate calibration report after real runs
+    if results and not args.dry_run:
+        # Quick summary to stdout
+        print("\n=== Quick Calibration Summary ===")
+        all_probe_names = set()
+        for m in results:
+            all_probe_names.update(results[m].keys())
+        for probe_name in sorted(all_probe_names):
+            scores = [
+                results[m][probe_name]["score"]
+                for m in results
+                if probe_name in results[m] and results[m][probe_name].get("error") is None
+            ]
+            if scores:
+                rng = max(scores) - min(scores)
+                flag = " *** CEILING" if max(scores) > 0.95 else ""
+                flag += " *** LOW RANGE" if rng < 0.15 and len(scores) > 1 else ""
+                print(f"  {probe_name:22s} min={min(scores):.3f}  max={max(scores):.3f}  range={rng:.3f}{flag}")
+
+        # Full calibration report
+        try:
+            from analysis.calibration import generate_calibration_report
+            report_path = OUTPUT_DIR / "CALIBRATION_REPORT.md"
+            generate_calibration_report(results, str(report_path))
+            print(f"\nCalibration report saved to {report_path}")
+        except Exception as exc:
+            print(f"\nWarning: could not generate calibration report: {exc}")
 
 
 if __name__ == "__main__":

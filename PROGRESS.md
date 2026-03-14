@@ -292,3 +292,10 @@
 [12:30] DONE: Removed "there are" from conclusion markers (too generic, matches intermediate facts)
 [12:30] DONE: Increased consistency max_new_tokens from 300 to 500 (llama-70b was truncated before reaching conclusion)
 [12:30] DONE: All 201 tests passing
+
+## Auto Calibration Report
+[13:00] DONE: Added automatic calibration report generation to run_baselines.py (generates after all models complete)
+[13:00] DONE: Added quick summary to stdout with CEILING and LOW RANGE flags
+[13:00] DONE: Generated CALIBRATION_REPORT.md from current results
+[13:00] NOTE: High orthogonality correlations (r>0.9 everywhere) are artifacts of gemini-2.5-pro scoring ~0 on all probes. Remove gemini from correlation analysis for meaningful orthogonality.
+[13:00] NOTE: spatial_pathfinding has LOW RANGE (0.094) — models genuinely can't pathfind. Keep for sweep (may show signal with circuit manipulation) but don't rely on it for baseline calibration.
