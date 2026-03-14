@@ -323,3 +323,11 @@
 [15:00] DONE: Removed inline scaling from OpenRouter and Gemini adapters (centralized)
 [15:00] DONE: Increased probe timeout from 180s to 300s for thinking model headroom
 [15:00] DONE: All 201 tests passing
+
+## Benchmark Research
+[14:56] DONE: Read all 19 probe source files to understand current implementation
+[14:56] DONE: Researched benchmarks: GSM8K, HumanEval, MBPP, EQ-Bench, SimpleQA, TriviaQA, MMLU, BLiMP, IFEval, PlanBench, TruthfulQA, Perez/Sharma sycophancy, ToolBench, API-Bank, ARC-AGI, SpartQA, AdvGLUE, CounterBench, TimeBench, BATS, MazeEval
+[14:56] DONE: Created BENCHMARK_RESEARCH.md — 19 probe sections with benchmark, license, lm-eval-harness status, score distributions, recommendation
+[14:56] DONE: Recommendations: 1 REPLACE (factual->SimpleQA), 10 AUGMENT, 8 KEEP AS-IS
+[14:56] DONE: Priority actions: factual replacement highest impact, instruction+math augmentation for leaderboard comparability
+[14:56] NEXT: Implement benchmark augmentations starting with factual probe SimpleQA replacement
