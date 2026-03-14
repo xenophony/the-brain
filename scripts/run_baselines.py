@@ -53,7 +53,8 @@ FALLBACK_REGISTRY = {
 }
 
 ALL_PROBES = [
-    "math", "eq", "code", "factual", "spatial", "spatial_pathfinding",
+    "math", "eq", "code", "factual", "spatial",
+    "spatial_pong_simple", "spatial_pong_strategic",
     "language", "tool_use",
     "holistic", "planning", "instruction", "hallucination", "sycophancy",
     "consistency", "temporal", "metacognition", "counterfactual",

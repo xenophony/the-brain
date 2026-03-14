@@ -123,6 +123,63 @@ def _max_words(response: str, n: int) -> bool:
     return len(response.strip().split()) <= n
 
 
+def _no_letter_e(response: str) -> bool:
+    """Check response contains no letter 'e' (case-insensitive)."""
+    return 'e' not in response.lower()
+
+
+def _exactly_n_numbers(response: str, n: int) -> bool:
+    """Check response contains exactly n numeric groups."""
+    return len(re.findall(r'\d+', response)) == n
+
+
+def _all_4_letters_strict(response: str) -> bool:
+    """Check every word has exactly 4 letters (alpha only)."""
+    words = response.strip().split()
+    if not words:
+        return False
+    return all(len(re.sub(r'[^a-zA-Z]', '', w)) == 4 for w in words if w)
+
+
+def _no_spaces_strict(response: str) -> bool:
+    """Check no spaces at all in response."""
+    return ' ' not in response
+
+
+def _min_chars(response: str, n: int) -> bool:
+    """Check response has at least n characters."""
+    return len(response.strip()) >= n
+
+
+def _all_start_with(response: str, letter: str) -> bool:
+    """Check every word starts with specified letter (case-insensitive)."""
+    words = response.strip().split()
+    if not words:
+        return False
+    return all(w[0].lower() == letter.lower() for w in words if w)
+
+
+def _only_numbers_and_spaces(response: str) -> bool:
+    """Check response contains only digits and spaces."""
+    return bool(response.strip()) and all(c.isdigit() or c == ' ' for c in response.strip())
+
+
+def _exactly_n_groups(response: str, n: int) -> bool:
+    """Check response has exactly n whitespace-separated groups."""
+    return len(response.strip().split()) == n
+
+
+def _ends_with_capital(response: str) -> bool:
+    """Check response ends with a capital letter."""
+    r = response.rstrip()
+    return bool(r) and r[-1].isupper()
+
+
+def _exactly_n_chars(response: str, n: int) -> bool:
+    """Check response has exactly n characters (including spaces)."""
+    return len(response.rstrip('\n')) == n
+
+
 EASY_ITEMS = [
     # Simple 3-constraint scenarios
     {
@@ -339,6 +396,90 @@ HARD_ITEMS = [
                 for w in r.strip().split() if w
             ) if r.strip() else False),
             ("all_lowercase", _all_lowercase),
+        ],
+    },
+    # IFEval-style constraint items
+    {
+        "prompt": (
+            "Write exactly 5 words. Do not use the letter 'e'. All lowercase.\n"
+            "Follow these rules exactly."
+        ),
+        "checkers": [
+            ("word_count_5", lambda r: _word_count(r, 5)),
+            ("no_letter_e", _no_letter_e),
+            ("all_lowercase", _all_lowercase),
+        ],
+    },
+    {
+        "prompt": (
+            "Respond with a sentence that contains exactly 2 numbers. End with a period.\n"
+            "Follow these rules exactly."
+        ),
+        "checkers": [
+            ("exactly_2_numbers", lambda r: _exactly_n_numbers(r, 2)),
+            ("ends_period", _ends_with_period),
+        ],
+    },
+    {
+        "prompt": (
+            "Write 3 words where each word has exactly 4 letters. All uppercase.\n"
+            "Follow these rules exactly."
+        ),
+        "checkers": [
+            ("word_count_3", lambda r: _word_count(r, 3)),
+            ("all_4_letters", _all_4_letters_strict),
+            ("all_uppercase", _has_uppercase),
+        ],
+    },
+    {
+        "prompt": (
+            "Respond with only consonants. No vowels. No spaces. At least 5 characters.\n"
+            "Follow these rules exactly."
+        ),
+        "checkers": [
+            ("no_vowels", _no_vowels),
+            ("no_spaces", _no_spaces_strict),
+            ("min_5_chars", lambda r: _min_chars(r, 5)),
+        ],
+    },
+    {
+        "prompt": (
+            "Write a response where every word starts with 'S'. Exactly 4 words.\n"
+            "Follow these rules exactly."
+        ),
+        "checkers": [
+            ("all_start_s", lambda r: _all_start_with(r, 's')),
+            ("word_count_4", lambda r: _word_count(r, 4)),
+        ],
+    },
+    {
+        "prompt": (
+            "Use only numbers and spaces. No letters. Exactly 3 groups.\n"
+            "Follow these rules exactly."
+        ),
+        "checkers": [
+            ("only_numbers_spaces", _only_numbers_and_spaces),
+            ("exactly_3_groups", lambda r: _exactly_n_groups(r, 3)),
+        ],
+    },
+    {
+        "prompt": (
+            "Write backwards: the response must end with a capital letter. Exactly 2 words.\n"
+            "Follow these rules exactly."
+        ),
+        "checkers": [
+            ("ends_capital", _ends_with_capital),
+            ("word_count_2", lambda r: _word_count(r, 2)),
+        ],
+    },
+    {
+        "prompt": (
+            "Respond with exactly 10 characters (including spaces). Must contain a number.\n"
+            "Follow these rules exactly."
+        ),
+        "checkers": [
+            ("exactly_10_chars", lambda r: _exactly_n_chars(r, 10)),
+            ("has_number", _has_number),
         ],
     },
 ]

@@ -15,29 +15,21 @@ from probes.registry import BaseProbe, register_probe
 
 EASY_ITEMS = [
     {
-        "prompt": "What is the atomic number of gold? Answer with only the number.",
-        "answer": "79",
+        "prompt": "What element has atomic number 79? Answer with only the element name.",
+        "answer": "gold",
+        "type": "word",
+        "alternates": [],
+    },
+    {
+        "prompt": "In what year did the Berlin Wall fall? Answer with only the number.",
+        "answer": "1989",
         "type": "number",
     },
     {
-        "prompt": "In what year did World War 2 end? Answer with only the number.",
-        "answer": "1945",
-        "type": "number",
-    },
-    {
-        "prompt": "How many bones are in the adult human body? Answer with only the number.",
-        "answer": "206",
-        "type": "number",
-    },
-    {
-        "prompt": "How many continents are there on Earth? Answer with only the number.",
-        "answer": "7",
-        "type": "number",
-    },
-    {
-        "prompt": "What is the speed of light in km/s (approximate)? Answer with only the number.",
-        "answer": "299792",
-        "type": "number",
+        "prompt": "What is the chemical formula for water? Answer with only the formula.",
+        "answer": "h2o",
+        "type": "word",
+        "alternates": [],
     },
     {
         "prompt": "How many chromosomes do humans have? Answer with only the number.",
@@ -45,57 +37,93 @@ EASY_ITEMS = [
         "type": "number",
     },
     {
-        "prompt": "What is the boiling point of water in degrees Celsius? Answer with only the number.",
-        "answer": "100",
+        "prompt": "What planet is closest to the Sun? Answer with only the planet name.",
+        "answer": "mercury",
+        "type": "word",
+        "alternates": [],
+    },
+    {
+        "prompt": "What is the speed of sound in m/s at sea level (approximate)? Answer with only the number.",
+        "answer": "343",
         "type": "number",
     },
     {
-        "prompt": "What is the chemical symbol for iron? Answer with only the symbol.",
-        "answer": "fe",
+        "prompt": "What is the largest organ in the human body? Answer with only the organ name.",
+        "answer": "skin",
         "type": "word",
         "alternates": [],
+    },
+    {
+        "prompt": "In what year was the first iPhone released? Answer with only the number.",
+        "answer": "2007",
+        "type": "number",
+    },
+    {
+        "prompt": "What is the most abundant gas in Earth's atmosphere? Answer with only the gas name.",
+        "answer": "nitrogen",
+        "type": "word",
+        "alternates": [],
+    },
+    {
+        "prompt": "How many bones are in the adult human body? Answer with only the number.",
+        "answer": "206",
+        "type": "number",
     },
 ]
 
 HARD_ITEMS = [
     {
-        "prompt": "What is the melting point of tungsten in degrees Celsius? Answer with only the number.",
-        "answer": "3422",
+        "prompt": "What is the atomic number of molybdenum? Answer with only the number.",
+        "answer": "42",
         "type": "number",
     },
     {
-        "prompt": "What is the rest mass energy of an electron in keV? Answer with only the number.",
-        "answer": "511",
+        "prompt": "In what year was the Treaty of Westphalia signed? Answer with only the number.",
+        "answer": "1648",
         "type": "number",
     },
     {
-        "prompt": "What is the half-life of carbon-14 in years? Answer with only the number.",
-        "answer": "5730",
+        "prompt": "What is the capital of Bhutan? Answer with only the city name.",
+        "answer": "thimphu",
+        "type": "word",
+        "alternates": [],
+    },
+    {
+        "prompt": "How many teeth does an adult human normally have? Answer with only the number.",
+        "answer": "32",
         "type": "number",
     },
     {
-        "prompt": "What is the boiling point of nitrogen in degrees Celsius? Answer with only the number.",
-        "answer": "-196",
+        "prompt": "What element has the chemical symbol 'W'? Answer with only the element name.",
+        "answer": "tungsten",
+        "type": "word",
+        "alternates": ["wolfram"],
+    },
+    {
+        "prompt": "In what year did the Chernobyl disaster occur? Answer with only the number.",
+        "answer": "1986",
         "type": "number",
     },
     {
-        "prompt": "How many known moons does Uranus have as of 2024? Answer with only the number.",
-        "answer": "28",
+        "prompt": "What is the deepest lake in the world? Answer with only the lake name.",
+        "answer": "baikal",
+        "type": "word",
+        "alternates": ["lake baikal"],
+    },
+    {
+        "prompt": "What is the diameter of Earth in kilometers (approximate)? Answer with only the number.",
+        "answer": "12742",
         "type": "number",
     },
     {
-        "prompt": "What is the ionization energy of hydrogen in electron volts? Answer with only the number (2 decimal places).",
-        "answer": "13.6",
-        "type": "number",
+        "prompt": "What country has the most time zones? Answer with only the country name.",
+        "answer": "france",
+        "type": "word",
+        "alternates": [],
     },
     {
-        "prompt": "What is the Mohs hardness of topaz? Answer with only the number.",
-        "answer": "8",
-        "type": "number",
-    },
-    {
-        "prompt": "In what year was the element gallium discovered? Answer with only the number.",
-        "answer": "1875",
+        "prompt": "What is the boiling point of ethanol in Celsius? Answer with only the number.",
+        "answer": "78",
         "type": "number",
     },
 ]

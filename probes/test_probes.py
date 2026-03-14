@@ -845,3 +845,137 @@ class TestOverlayAnalysis:
         assert "skip_regions" in recs["math"]
         assert "double_regions" in recs["math"]
         assert "optimized_path_hint" in recs["math"]
+
+
+# ------------------------------------------------------------------ #
+#  Spatial Pong probes                                                 #
+# ------------------------------------------------------------------ #
+
+class TestPongOracle:
+    def test_wall_bounce_bottom(self):
+        """Ball heading down should bounce off y=0."""
+        from probes.pong_oracle import pong_oracle
+        # Ball at y=5, dy=-3, paddle_x=40, ball_x=35, dx=5 -> 1 step
+        # After 1 step: y = 5 + (-3) = 2, no bounce
+        action, steps, final_y = pong_oracle(35, 5, 5, -3, 40, 15, 6, 999, 30)
+        assert steps == 1
+        assert final_y == 2.0
+        assert action == "down"
+
+    def test_wall_bounce_top(self):
+        """Ball heading up should bounce off y=30."""
+        from probes.pong_oracle import pong_oracle
+        # Ball at y=28, dy=3, dx=2, paddle_x=40, ball_x=30
+        # Step 1: y=31 -> bounce -> y=2*30-31=29, dy=-3
+        # ... continues
+        action, steps, final_y = pong_oracle(30, 28, 2, 3, 40, 15, 6, 999, 30)
+        assert steps == 5
+        # Verify final_y is within court bounds
+        assert 0 <= final_y <= 30
+
+    def test_wall_bounce_reflection_known_scenario(self):
+        """Known scenario: ball at (6,12) vel=(4,-3), bounces once."""
+        from probes.pong_oracle import pong_oracle
+        action, steps, final_y = pong_oracle(6, 12, 4, -3, 40, 13, 6, 999, 30)
+        assert steps == 9
+        assert final_y == 15.0
+        assert action == "stay"  # final_y=15, paddle_cy=13, distance=2 <= 3
+
+    def test_oracle_stay_within_paddle(self):
+        """Ball landing within paddle range should return stay."""
+        from probes.pong_oracle import pong_oracle
+        action, _, _ = pong_oracle(35, 15, 5, 0, 40, 15, 6, 999, 30)
+        assert action == "stay"
+
+    def test_oracle_reachability_unreachable(self):
+        """Ball unreachable with slow paddle should return stay."""
+        from probes.pong_oracle import pong_oracle
+        # Ball at (25,14) vel=(3,-2) paddle_cy=15 speed=1
+        # final_y=4.0, distance=11, max_reach=1*5=5 < 11-3=8
+        action, steps, final_y = pong_oracle(25, 14, 3, -2, 40, 15, 6, 1, 30)
+        assert action == "stay"  # unreachable
+
+    def test_oracle_reachability_reachable(self):
+        """Ball reachable with fast paddle should return up/down."""
+        from probes.pong_oracle import pong_oracle
+        action, _, _ = pong_oracle(25, 14, 3, -2, 40, 15, 6, 5, 30)
+        assert action in ("up", "down")
+
+
+class TestSpatialPongSimpleProbe:
+    def test_perfect_score(self, perfect_model):
+        probe = get_probe("spatial_pong_simple")
+        result = probe.run(perfect_model)
+        score = _extract_score(result)
+        assert score > 0.9, f"Spatial pong simple perfect score too low: {score}"
+
+    def test_terrible_score(self, terrible_model):
+        probe = get_probe("spatial_pong_simple")
+        result = probe.run(terrible_model)
+        score = _extract_score(result)
+        assert score < 0.4, f"Spatial pong simple terrible score too high: {score}"
+
+    def test_result_structure(self, perfect_model):
+        probe = get_probe("spatial_pong_simple")
+        result = probe.run(perfect_model)
+        assert isinstance(result, dict)
+        assert "score" in result
+        assert "easy_score" in result
+        assert "hard_score" in result
+        assert "n_easy" in result and result["n_easy"] == 8
+        assert "n_hard" in result and result["n_hard"] == 8
+
+    def test_scenario_count(self):
+        from probes.spatial_pong_simple.probe import EASY_ITEMS, HARD_ITEMS
+        assert len(EASY_ITEMS) == 8
+        assert len(HARD_ITEMS) == 8
+
+    def test_scoring_function(self):
+        from probes.spatial_pong_simple.probe import score_pong_simple
+        assert score_pong_simple("up", "up") == 1.0
+        assert score_pong_simple("down", "down") == 1.0
+        assert score_pong_simple("stay", "stay") == 1.0
+        assert score_pong_simple("up", "down") == 0.0
+        assert score_pong_simple("banana", "up") == 0.0
+        assert score_pong_simple("I think the answer is up", "up") == 1.0
+
+
+class TestSpatialPongStrategicProbe:
+    def test_perfect_score(self, perfect_model):
+        probe = get_probe("spatial_pong_strategic")
+        result = probe.run(perfect_model)
+        score = _extract_score(result)
+        assert score > 0.9, f"Spatial pong strategic perfect score too low: {score}"
+
+    def test_terrible_score(self, terrible_model):
+        probe = get_probe("spatial_pong_strategic")
+        result = probe.run(terrible_model)
+        score = _extract_score(result)
+        assert score < 0.4, f"Spatial pong strategic terrible score too high: {score}"
+
+    def test_result_structure(self, perfect_model):
+        probe = get_probe("spatial_pong_strategic")
+        result = probe.run(perfect_model)
+        assert isinstance(result, dict)
+        assert "score" in result
+        assert "easy_score" in result
+        assert "hard_score" in result
+
+    def test_scenario_count(self):
+        from probes.spatial_pong_strategic.probe import EASY_ITEMS, HARD_ITEMS
+        assert len(EASY_ITEMS) == 8
+        assert len(HARD_ITEMS) == 8
+
+    def test_unreachable_scenarios_present(self):
+        from probes.spatial_pong_strategic.probe import HARD_ITEMS
+        unreachable = [i for i in HARD_ITEMS if i.get("unreachable")]
+        assert len(unreachable) >= 3, f"Need at least 3 unreachable, got {len(unreachable)}"
+        for item in unreachable:
+            assert item["answer"] == "stay"
+
+    def test_scoring_function(self):
+        from probes.spatial_pong_strategic.probe import score_pong_strategic
+        assert score_pong_strategic("up", "up") == 1.0
+        assert score_pong_strategic("stay", "stay") == 1.0
+        assert score_pong_strategic("down", "up") == 0.0
+        assert score_pong_strategic("banana", "stay") == 0.0

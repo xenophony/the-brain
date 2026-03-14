@@ -349,7 +349,7 @@ class TestModelRegistry:
             assert p in registered, f"Probe '{p}' in ALL_PROBES but not registered"
 
     def test_all_probes_count(self):
-        assert len(ALL_PROBES) == 18
+        assert len(ALL_PROBES) == 20
 
 
 # ===================================================================

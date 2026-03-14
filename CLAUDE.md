@@ -104,6 +104,8 @@ Every probe MUST satisfy all three:
 | counterfactual | Prefrontal cortex / hypothetical | faster/slower/same or A/B/C/D |
 | abstraction | Association cortex | Category word or abstract/concrete |
 | noise_robustness | General processing stability | Short answer (4 variants) |
+| spatial_pong_simple | Parietal/visual-spatial trajectory | up/down/stay |
+| spatial_pong_strategic | Parietal + prefrontal executive | up/down/stay |
 
 ## ExLlamaV2 Adapter — Key Technical Notes
 - Layer path injection works by monkey-patching model.forward()

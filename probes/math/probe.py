@@ -27,6 +27,15 @@ HARD_ITEMS = [
     {"prompt": "What is 17^3? Answer with only the number.", "answer": 4913},
     {"prompt": "What is the sum of the first 15 square numbers? Answer with only the number.", "answer": 1240},
     {"prompt": "What is the LCM of 12 and 18? Answer with only the number.", "answer": 36},
+    # GSM8K-style word problems (1-2 step)
+    {"prompt": "A baker made 48 cookies and packed them in boxes of 6. How many boxes did he fill? Answer with only the number.", "answer": 8},
+    {"prompt": "A store had 156 apples. They sold 89 apples. How many apples are left? Answer with only the number.", "answer": 67},
+    {"prompt": "If a car travels at 60 km/h for 2.5 hours, how many kilometers does it travel? Answer with only the number.", "answer": 150},
+    {"prompt": "A rectangle is 12 cm long and 8 cm wide. What is its area in square cm? Answer with only the number.", "answer": 96},
+    {"prompt": "If 3 friends split a $45 bill equally, how much does each person pay in dollars? Answer with only the number.", "answer": 15},
+    {"prompt": "A train leaves at 9:15 AM and arrives at 11:45 AM. How many minutes is the journey? Answer with only the number.", "answer": 150},
+    {"prompt": "A factory produces 350 widgets per hour. How many widgets in 4 hours? Answer with only the number.", "answer": 1400},
+    {"prompt": "If a shirt costs $80 after a 20% discount, what was the original price in dollars? Answer with only the number.", "answer": 100},
 ]
 
 # Legacy alias for backward compatibility

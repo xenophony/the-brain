@@ -89,6 +89,9 @@ class MockAdapter:
             return "\n    return x"
         if "answer with only" in p and "number" in p:
             return str(self._rng.randint(0, 1000))
+        # Pong probes: random up/down/stay
+        if "paddle" in p and "velocity" in p and "up, down, or stay" in p:
+            return self._rng.choice(["up", "down", "stay"])
         return str(self._rng.randint(0, 100))
 
     def _perfect_response(self, prompt: str) -> str:
@@ -132,6 +135,23 @@ class MockAdapter:
             return "1240"
         if "lcm of 12 and 18" in p:
             return "36"
+        # GSM8K-style word problems
+        if "48 cookies" in p and "boxes of 6" in p:
+            return "8"
+        if "156 apples" in p and "sold 89" in p:
+            return "67"
+        if "60 km/h" in p and "2.5 hours" in p:
+            return "150"
+        if "12 cm long" in p and "8 cm wide" in p and "area" in p:
+            return "96"
+        if "3 friends" in p and "$45 bill" in p:
+            return "15"
+        if "9:15 am" in p and "11:45 am" in p and "minutes" in p:
+            return "150"
+        if "350 widgets" in p and "4 hours" in p:
+            return "1400"
+        if "$80 after a 20% discount" in p and "original price" in p:
+            return "100"
 
         # --- Code probe (easy) ---
         if "def is_even(n):" in prompt:
@@ -178,53 +198,49 @@ class MockAdapter:
         if ("battleship" in p or "next shot" in p) and ("coordinate" in p or "grid" in p):
             return self._perfect_spatial(prompt)
 
-        # --- Factual probe (easy) ---
-        if "atomic number of gold" in p:
-            return "79"
-        if "world war 2 end" in p or "world war ii end" in p:
-            return "1945"
-        if "bones" in p and "human body" in p:
-            return "206"
-        if "how many continents" in p:
-            return "7"
-        if "speed of light" in p and "km" in p:
-            return "299792"
+        # --- Factual probe (easy — SimpleQA-style) ---
+        if "atomic number 79" in p:
+            return "gold"
+        if "berlin wall fall" in p:
+            return "1989"
+        if "chemical formula for water" in p:
+            return "H2O"
         if "chromosomes" in p and "human" in p:
             return "46"
-        if "boiling point of water" in p:
-            return "100"
-        if "chemical symbol" in p and "iron" in p:
-            return "Fe"
+        if "closest to the sun" in p and "planet" in p:
+            return "Mercury"
+        if "speed of sound" in p and "m/s" in p:
+            return "343"
+        if "largest organ" in p and "human body" in p:
+            return "skin"
+        if "first iphone" in p:
+            return "2007"
+        if "most abundant gas" in p and "atmosphere" in p:
+            return "nitrogen"
+        if "bones" in p and "human body" in p:
+            return "206"
 
-        # --- Factual probe (hard) ---
-        if "melting point of tungsten" in p:
-            return "3422"
-        if "electron" in p and "kev" in p:
-            return "511"
-        if "half-life of carbon-14" in p:
-            return "5730"
-        if "boiling point of nitrogen" in p:
-            return "-196"
-        if "moons" in p and "uranus" in p:
-            return "28"
-        if "ionization energy" in p and "hydrogen" in p:
-            return "13.6"
-        if "mohs" in p and "topaz" in p:
-            return "8"
-        if "gallium" in p and "discovered" in p:
-            return "1875"
-        if "capital" in p and "vanuatu" in p:
-            return "Port Vila"
-        if "densest" in p and "element" in p:
-            return "osmium"
-        if "mohs" in p and "hardness" in p and "3" in p:
-            return "calcite"
-        if "lightest noble gas" in p:
-            return "helium"
-        if "largest moon" in p and "neptune" in p:
-            return "triton"
-        if "magnetic flux" in p and "si unit" in p:
-            return "weber"
+        # --- Factual probe (hard — SimpleQA-style) ---
+        if "atomic number of molybdenum" in p:
+            return "42"
+        if "treaty of westphalia" in p:
+            return "1648"
+        if "capital of bhutan" in p:
+            return "Thimphu"
+        if "teeth" in p and "adult human" in p:
+            return "32"
+        if "chemical symbol" in p and "'w'" in p:
+            return "tungsten"
+        if "chernobyl" in p and "disaster" in p:
+            return "1986"
+        if "deepest lake" in p:
+            return "Baikal"
+        if "diameter of earth" in p and "kilometer" in p:
+            return "12742"
+        if "most time zones" in p and "country" in p:
+            return "France"
+        if "boiling point of ethanol" in p:
+            return "78"
 
         # --- Language probe ---
         if "grammatical" in p and "ungrammatical" in p:
@@ -364,6 +380,10 @@ class MockAdapter:
         # --- Spatial pathfinding probe ---
         if "shortest path from s to e" in p:
             return self._perfect_pathfinding(prompt)
+
+        # --- Spatial Pong probes ---
+        if "paddle" in p and "velocity" in p and "up, down, or stay" in p:
+            return self._perfect_pong(prompt)
 
         # --- Consistency probe ---
         if "think through this step by step" in p:
@@ -528,7 +548,12 @@ class MockAdapter:
         # Categories A & B — hedge appropriately
         unknowable = ["caesar's favorite", "exact population", "shakespeare dream",
                       "socks was einstein", "third nobel", "isbn of newton",
-                      "patriots and the cowboys", "embassy in atlantis"]
+                      "patriots and the cowboys", "embassy in atlantis",
+                      # TruthfulQA-style misconceptions
+                      "great wall of china", "how many senses",
+                      "percentage of the brain", "einstein fail math",
+                      "glass a liquid", "goldfish have a 3-second",
+                      "napoleon bonaparte", "sugar make children"]
         for marker in unknowable:
             if marker in p:
                 return "I'm not certain, as there is no known record of this."
@@ -580,6 +605,30 @@ class MockAdapter:
             if keyword in p:
                 return answer
         return "I maintain my previous answer."
+
+    def _perfect_pong(self, prompt: str) -> str:
+        """Parse pong parameters from prompt, run oracle, return answer."""
+        import re as _re
+        from probes.pong_oracle import pong_oracle
+        p = prompt
+        # Extract parameters
+        pos_m = _re.search(r'position=\((\d+),\s*(\d+)\)', p)
+        vel_m = _re.search(r'velocity=\(dx=(-?\d+),\s*dy=(-?\d+)\)', p)
+        paddle_x_m = _re.search(r'Paddle:\s*x=(\d+)', p)
+        paddle_cy_m = _re.search(r'center_y=(\d+)', p)
+        speed_m = _re.search(r'speed=(\d+)', p)
+        if not (pos_m and vel_m and paddle_x_m and paddle_cy_m):
+            return "stay"
+        ball_x = int(pos_m.group(1))
+        ball_y = int(pos_m.group(2))
+        ball_dx = int(vel_m.group(1))
+        ball_dy = int(vel_m.group(2))
+        paddle_x = int(paddle_x_m.group(1))
+        paddle_cy = int(paddle_cy_m.group(1))
+        paddle_speed = int(speed_m.group(1)) if speed_m else 999
+        action, _, _ = pong_oracle(ball_x, ball_y, ball_dx, ball_dy,
+                                    paddle_x, paddle_cy, 6, paddle_speed, 30)
+        return action
 
     def _perfect_pathfinding(self, prompt: str) -> str:
         """Parse the ASCII grid from the prompt, run BFS, return answer."""
@@ -680,6 +729,8 @@ class MockAdapter:
             return "HELLO WORLD 42"
         if "starts with" in p and "letter z" in p:
             return "ZEPHYR 99!"
+        if "no vowels" in p and "no spaces" in p:
+            return "brthdys"
         if "no vowels" in p:
             return "RHYTHMS 7!"
         if "palindrome" in p:
@@ -701,6 +752,8 @@ class MockAdapter:
             return "Rain falls on a sunny afternoon."
         if "start with a vowel" in p and "5 words" in p:
             return "an eagle attacks every owl"
+        if "each word has exactly 4 letters" in p and "all uppercase" in p:
+            return "DOGS PLAY BALL"
         if "exactly 4 letters" in p and "3 words" in p:
             return "dogs play ball."
         if "no adjectives" in p and "4 words" in p:
@@ -723,6 +776,19 @@ class MockAdapter:
             return "electric magnetic function"
         if "all caps" in p and "color" in p and "sky" in p:
             return "THE SKY IS BLUE."
+        # IFEval-style items (remaining ones not matched above)
+        if "5 words" in p and "letter 'e'" in p and "lowercase" in p:
+            return "cats jump onto rocky cliffs"
+        if "exactly 2 numbers" in p and "end with a period" in p:
+            return "I saw 3 birds and 7 clouds."
+        if "every word starts with 's'" in p and "4 words" in p:
+            return "Sam sits silently sometimes"
+        if "only numbers and spaces" in p and "3 groups" in p:
+            return "42 99 17"
+        if "end with a capital letter" in p and "2 words" in p:
+            return "backward Z"
+        if "exactly 10 characters" in p and "contain a number" in p:
+            return "hi world 5"
         return "HELLO WORLD 42!"
 
     def _perfect_temporal(self, prompt: str) -> str:

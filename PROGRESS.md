@@ -331,3 +331,21 @@
 [14:56] DONE: Recommendations: 1 REPLACE (factual->SimpleQA), 10 AUGMENT, 8 KEEP AS-IS
 [14:56] DONE: Priority actions: factual replacement highest impact, instruction+math augmentation for leaderboard comparability
 [14:56] NEXT: Implement benchmark augmentations starting with factual probe SimpleQA replacement
+
+## Benchmark Augmentations (Priorities 1-4)
+[15:30] DONE: PRIORITY 1 — Replaced factual probe with 20 SimpleQA-style items (10 easy + 10 hard). Diverse domains, single unambiguous answers.
+[15:35] DONE: PRIORITY 2 — Augmented math probe with 8 GSM8K-style word problems (HARD_ITEMS now 16). 1-2 step problems with integer answers.
+[15:40] DONE: PRIORITY 3 — Augmented hallucination probe with 8 TruthfulQA-style common misconceptions (Category B). Total questions now 24.
+[15:45] DONE: PRIORITY 4 — Augmented instruction probe with 8 IFEval-style constraint items (HARD_ITEMS now 16). Added 12 new checker functions.
+[15:50] DONE: Updated MockAdapter perfect-mode responses for all 32 new items across all 4 probes.
+[15:55] DONE: All 90 tests passing. All probes score 1.0 in perfect mode.
+[15:55] DONE: Created AUGMENTATION_SUMMARY.md with detailed change log.
+
+[--:--] DONE: Created spatial_pong_simple probe (8 easy + 8 hard trajectory prediction scenarios, seed=42)
+[--:--] DONE: Created spatial_pong_strategic probe (8 easy + 8 hard motion planning scenarios, 3 unreachable)
+[--:--] DONE: Created shared pong_oracle.py with wall bounce simulation and reachability logic
+[--:--] DONE: Added MockAdapter support (perfect mode uses oracle, random mode returns random up/down/stay)
+[--:--] DONE: Added 17 new tests (oracle wall bounce, reachability, perfect/terrible scores, structure, scoring)
+[--:--] DONE: Updated run_baselines.py ALL_PROBES (added pong probes, removed spatial_pathfinding from defaults)
+[--:--] DONE: Updated CLAUDE.md brain region mapping table
+[--:--] DONE: All 107 tests pass (90 existing + 17 new)
