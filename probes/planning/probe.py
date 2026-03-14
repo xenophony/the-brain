@@ -1,7 +1,7 @@
 """
 Planning probe — order steps to achieve a goal.
 
-Given a goal and a set of unordered steps (labeled A-D), the model must
+Given a goal and a set of unordered steps (labeled A-D or A-E), the model must
 output the correct letter sequence. Scored by pairwise ordering correctness:
 each correctly ordered adjacent pair earns 1/n_pairs.
 
@@ -13,7 +13,7 @@ Maps to: prefrontal executive / planning circuits.
 import re
 from probes.registry import BaseProbe, register_probe
 
-SCENARIOS = [
+EASY_ITEMS = [
     {
         "goal": "Make breakfast (scrambled eggs and toast)",
         "steps": {
@@ -45,36 +45,6 @@ SCENARIOS = [
         "correct_order": "ADBC",
     },
     {
-        "goal": "Move to a new apartment",
-        "steps": {
-            "A": "Pack all belongings into boxes",
-            "B": "Sign the lease for the new apartment",
-            "C": "Unpack and arrange furniture",
-            "D": "Hire movers and transport everything",
-        },
-        "correct_order": "BADC",
-    },
-    {
-        "goal": "Plant a vegetable garden",
-        "steps": {
-            "A": "Plant seeds at the correct depth",
-            "B": "Water the planted seeds thoroughly",
-            "C": "Prepare the soil by tilling and adding compost",
-            "D": "Choose a sunny location for the garden",
-        },
-        "correct_order": "DCAB",
-    },
-    {
-        "goal": "Write a research paper",
-        "steps": {
-            "A": "Conduct a literature review",
-            "B": "Collect and analyze data",
-            "C": "Write the introduction and methods sections",
-            "D": "Proofread and submit the paper",
-        },
-        "correct_order": "ABCD",
-    },
-    {
         "goal": "Build a campfire",
         "steps": {
             "A": "Add larger logs once the fire is established",
@@ -85,14 +55,24 @@ SCENARIOS = [
         "correct_order": "BCDA",
     },
     {
-        "goal": "Prepare for a job interview",
+        "goal": "Administer first aid for a deep cut",
         "steps": {
-            "A": "Research the company and role",
-            "B": "Practice answering common interview questions",
-            "C": "Arrive 10 minutes early at the location",
-            "D": "Choose and prepare professional clothing",
+            "A": "Apply direct pressure with a clean cloth",
+            "B": "Wash hands or put on gloves",
+            "C": "Bandage the wound securely",
+            "D": "Clean the wound with water once bleeding slows",
         },
-        "correct_order": "ABDC",
+        "correct_order": "BADC",
+    },
+    {
+        "goal": "Move to a new apartment",
+        "steps": {
+            "A": "Pack all belongings into boxes",
+            "B": "Sign the lease for the new apartment",
+            "C": "Unpack and arrange furniture",
+            "D": "Hire movers and transport everything",
+        },
+        "correct_order": "BADC",
     },
     {
         "goal": "Bake a chocolate cake",
@@ -105,16 +85,18 @@ SCENARIOS = [
         "correct_order": "ABCD",
     },
     {
-        "goal": "Administer first aid for a deep cut",
+        "goal": "Prepare for a job interview",
         "steps": {
-            "A": "Apply direct pressure with a clean cloth",
-            "B": "Wash hands or put on gloves",
-            "C": "Bandage the wound securely",
-            "D": "Clean the wound with water once bleeding slows",
+            "A": "Research the company and role",
+            "B": "Practice answering common interview questions",
+            "C": "Arrive 10 minutes early at the location",
+            "D": "Choose and prepare professional clothing",
         },
-        "correct_order": "BADC",
+        "correct_order": "ABDC",
     },
-    # --- 5-step deep dependency chains (non-trivial ordering) ---
+]
+
+HARD_ITEMS = [
     {
         "goal": "Deploy a machine learning model to production",
         "steps": {
@@ -148,7 +130,65 @@ SCENARIOS = [
         },
         "correct_order": "ABCDE",
     },
+    {
+        "goal": "Organize a community fundraiser event",
+        "steps": {
+            "A": "Secure a venue and date",
+            "B": "Obtain necessary permits and insurance",
+            "C": "Recruit volunteers and assign roles",
+            "D": "Promote the event through local media",
+            "E": "Set up the venue and run the event",
+        },
+        "correct_order": "ABCDE",
+    },
+    {
+        "goal": "Restore a vintage car engine",
+        "steps": {
+            "A": "Document and photograph the engine before disassembly",
+            "B": "Remove the engine from the vehicle",
+            "C": "Clean, inspect, and machine worn parts",
+            "D": "Reassemble with new gaskets and seals",
+            "E": "Reinstall engine and perform break-in procedure",
+        },
+        "correct_order": "ABCDE",
+    },
+    {
+        "goal": "Set up a home solar power system",
+        "steps": {
+            "A": "Get a structural assessment of the roof",
+            "B": "Design the system and obtain permits",
+            "C": "Install mounting hardware and panels",
+            "D": "Wire panels to inverter and electrical panel",
+            "E": "Pass inspection and connect to the grid",
+        },
+        "correct_order": "ABCDE",
+    },
+    {
+        "goal": "Produce a short documentary film",
+        "steps": {
+            "A": "Research the subject and write a treatment",
+            "B": "Secure funding and equipment",
+            "C": "Conduct interviews and film B-roll",
+            "D": "Edit footage and add music/narration",
+            "E": "Submit to film festivals and distribute",
+        },
+        "correct_order": "ABCDE",
+    },
+    {
+        "goal": "Launch a new product line for a small business",
+        "steps": {
+            "A": "Conduct market research and identify target audience",
+            "B": "Develop prototypes and test with focus groups",
+            "C": "Finalize design and set up manufacturing",
+            "D": "Create marketing materials and pricing strategy",
+            "E": "Launch product and monitor initial sales feedback",
+        },
+        "correct_order": "ABCDE",
+    },
 ]
+
+# Legacy alias
+SCENARIOS = EASY_ITEMS + HARD_ITEMS
 
 PROMPT_TEMPLATE = (
     "Goal: {goal}\n\n"
@@ -221,9 +261,9 @@ class PlanningProbe(BaseProbe):
     name = "planning"
     description = "Step ordering / planning — prefrontal executive circuits"
 
-    def run(self, model) -> float:
-        scores = []
-        for scenario in SCENARIOS:
+    def run(self, model) -> dict:
+        easy_scores = []
+        for scenario in EASY_ITEMS:
             step_list = "\n".join(
                 f"  {label}: {desc}" for label, desc in scenario["steps"].items()
             )
@@ -232,5 +272,18 @@ class PlanningProbe(BaseProbe):
             )
             response = model.generate_short(prompt, max_new_tokens=10, temperature=0.0)
             score = score_planning(response, scenario["correct_order"])
-            scores.append(score)
-        return sum(scores) / len(scores)
+            easy_scores.append(score)
+
+        hard_scores = []
+        for scenario in HARD_ITEMS:
+            step_list = "\n".join(
+                f"  {label}: {desc}" for label, desc in scenario["steps"].items()
+            )
+            prompt = PROMPT_TEMPLATE.format(
+                goal=scenario["goal"], step_list=step_list
+            )
+            response = model.generate_short(prompt, max_new_tokens=10, temperature=0.0)
+            score = score_planning(response, scenario["correct_order"])
+            hard_scores.append(score)
+
+        return self._make_result(easy_scores, hard_scores)

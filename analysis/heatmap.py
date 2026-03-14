@@ -163,6 +163,189 @@ def generate_all_plots(results_path: str, output_dir: str):
     print("Saved circuit_boundaries.json")
 
 
+# ------------------------------------------------------------------ #
+#  Difficulty-aware analysis                                           #
+# ------------------------------------------------------------------ #
+
+def build_difficulty_matrices(
+    results: list[dict], probe_name: str, n_layers: int
+) -> dict[str, np.ndarray]:
+    """
+    Build three matrices from difficulty-tiered sweep results.
+
+    Returns dict with keys:
+      "overall": standard delta matrix (same as build_delta_matrix)
+      "easy": delta on easy items only
+      "hard": delta on hard items only
+      "diff": hard - easy (positive = circuit helps hard more)
+    """
+    overall = np.full((n_layers, n_layers + 1), np.nan)
+    easy = np.full((n_layers, n_layers + 1), np.nan)
+    hard = np.full((n_layers, n_layers + 1), np.nan)
+
+    # Find baseline scores for normalization
+    baseline_overall = 0.0
+    baseline_easy = 0.0
+    baseline_hard = 0.0
+    for r in results:
+        if r["i"] == 0 and r["j"] == 0:
+            baseline_overall = r["probe_scores"].get(probe_name, 0.0)
+            # Check for difficulty-tiered scores
+            easy_key = f"{probe_name}_easy"
+            hard_key = f"{probe_name}_hard"
+            baseline_easy = r["probe_scores"].get(easy_key, baseline_overall)
+            baseline_hard = r["probe_scores"].get(hard_key, baseline_overall)
+            break
+
+    for r in results:
+        i, j = r["i"], r["j"]
+        if i == 0 and j == 0:
+            continue
+
+        score = r["probe_scores"].get(probe_name, 0.0)
+        overall[i, j] = score - baseline_overall
+
+        easy_key = f"{probe_name}_easy"
+        hard_key = f"{probe_name}_hard"
+        if easy_key in r["probe_scores"]:
+            easy[i, j] = r["probe_scores"][easy_key] - baseline_easy
+        if hard_key in r["probe_scores"]:
+            hard[i, j] = r["probe_scores"][hard_key] - baseline_hard
+
+    # Diff matrix: hard - easy (positive = helps hard more)
+    diff = hard - easy
+
+    return {"overall": overall, "easy": easy, "hard": hard, "diff": diff}
+
+
+def find_fastpath_circuits(
+    easy_matrix: np.ndarray, hard_matrix: np.ndarray, threshold: float = 0.03
+) -> list[dict]:
+    """
+    Find circuits where easy improves but hard degrades or stays flat.
+    These are fast-path candidates — good for easy queries, skip for hard ones.
+    """
+    results = []
+    for i in range(easy_matrix.shape[0]):
+        for j in range(i + 1, easy_matrix.shape[1]):
+            e_val = easy_matrix[i, j]
+            h_val = hard_matrix[i, j]
+            if (not np.isnan(e_val) and not np.isnan(h_val)
+                    and e_val > threshold and h_val < 0):
+                results.append({
+                    "i": i, "j": j,
+                    "easy_delta": float(e_val),
+                    "hard_delta": float(h_val),
+                    "type": "fast_path",
+                })
+    return sorted(results, key=lambda x: x["easy_delta"], reverse=True)
+
+
+def find_complexity_circuits(
+    easy_matrix: np.ndarray, hard_matrix: np.ndarray, threshold: float = 0.03
+) -> list[dict]:
+    """
+    Find circuits where hard improves but easy stays flat.
+    These are depth circuits — only activate for hard tasks.
+    """
+    results = []
+    for i in range(hard_matrix.shape[0]):
+        for j in range(i + 1, hard_matrix.shape[1]):
+            e_val = easy_matrix[i, j]
+            h_val = hard_matrix[i, j]
+            if (not np.isnan(e_val) and not np.isnan(h_val)
+                    and h_val > threshold and e_val < 0.1 * threshold):
+                results.append({
+                    "i": i, "j": j,
+                    "easy_delta": float(e_val),
+                    "hard_delta": float(h_val),
+                    "type": "complexity",
+                })
+    return sorted(results, key=lambda x: x["hard_delta"], reverse=True)
+
+
+def plot_difficulty_comparison(
+    results_path: str, output_dir: str, probe_name: str = None
+):
+    """
+    Generate side-by-side easy/hard/diff heatmaps for difficulty-tiered probes.
+
+    If probe_name is None, generates for all probes that have difficulty data.
+    """
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        import matplotlib.colors as mcolors
+    except ImportError:
+        print("matplotlib not installed — skipping difficulty plots")
+        return
+
+    results = load_results(results_path)
+    if not results:
+        return
+
+    out = Path(output_dir)
+    out.mkdir(parents=True, exist_ok=True)
+
+    max_j = max(r["j"] for r in results if r["j"] > 0) if any(r["j"] > 0 for r in results) else 1
+    n_layers = max_j
+    probe_names = list(results[0]["probe_scores"].keys()) if results else []
+
+    # Filter to probes that have difficulty data
+    probes_to_plot = []
+    for pname in probe_names:
+        if pname.endswith("_easy") or pname.endswith("_hard"):
+            continue
+        easy_key = f"{pname}_easy"
+        if easy_key in results[0].get("probe_scores", {}):
+            probes_to_plot.append(pname)
+
+    if probe_name:
+        probes_to_plot = [probe_name] if probe_name in probes_to_plot else []
+
+    for probe in probes_to_plot:
+        matrices = build_difficulty_matrices(results, probe, n_layers)
+
+        fig, axes = plt.subplots(1, 3, figsize=(24, 7))
+
+        for idx, (key, title) in enumerate([
+            ("easy", f"{probe} — Easy items"),
+            ("hard", f"{probe} — Hard items"),
+            ("diff", f"{probe} — Hard minus Easy"),
+        ]):
+            mat = matrices[key]
+            ax = axes[idx]
+
+            if key == "diff":
+                vmax = max(abs(np.nanmin(mat)), abs(np.nanmax(mat)), 0.01)
+                norm = mcolors.TwoSlopeNorm(vmin=-vmax, vcenter=0, vmax=vmax)
+                cmap = "PiYG"
+            else:
+                vmax = max(abs(np.nanmin(mat)), abs(np.nanmax(mat)), 0.01)
+                norm = mcolors.TwoSlopeNorm(vmin=-vmax, vcenter=0, vmax=vmax)
+                cmap = "RdBu_r"
+
+            im = ax.imshow(mat, cmap=cmap, norm=norm, aspect="auto", origin="lower")
+            ax.set_xlabel("j")
+            ax.set_ylabel("i")
+            ax.set_title(title)
+            plt.colorbar(im, ax=ax, label="Delta")
+
+        fig.suptitle(f"Difficulty Comparison: {probe}", fontsize=14)
+        fig.savefig(out / f"difficulty_{probe}.png", dpi=150, bbox_inches="tight")
+        plt.close(fig)
+        print(f"Saved difficulty_{probe}.png")
+
+        # Report fast-path and complexity circuits
+        fast = find_fastpath_circuits(matrices["easy"], matrices["hard"])
+        complexity = find_complexity_circuits(matrices["easy"], matrices["hard"])
+        if fast:
+            print(f"  {probe}: {len(fast)} fast-path circuits (help easy, hurt hard)")
+        if complexity:
+            print(f"  {probe}: {len(complexity)} complexity circuits (help hard only)")
+
+
 def classify_region(dup_delta: float, skip_delta: float, threshold: float = 0.03) -> str:
     """
     Classify an (i,j) region into one of four quadrants.

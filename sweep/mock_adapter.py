@@ -122,8 +122,36 @@ class MockAdapter:
             return "12"
         if "256 in base 2" in p:
             return "9"
+        if "cube root of 27000" in p:
+            return "30"
+        if "what is 17^3" in p:
+            return "4913"
+        if "first 15 square" in p:
+            return "1240"
+        if "lcm of 12 and 18" in p:
+            return "36"
 
-        # --- Code probe ---
+        # --- Code probe (easy) ---
+        if "def is_even(n):" in prompt:
+            return "def is_even(n):\n    return n % 2 == 0"
+        if "def sum_list(lst):" in prompt:
+            return "def sum_list(lst):\n    return sum(lst)"
+        if "def first_element(lst):" in prompt:
+            return "def first_element(lst):\n    return lst[0] if lst else None"
+        if "def reverse_string(s):" in prompt:
+            return "def reverse_string(s):\n    return s[::-1]"
+        if "def count_vowels(s):" in prompt:
+            return "def count_vowels(s):\n    return sum(1 for c in s.lower() if c in 'aeiou')"
+        if "def fizzbuzz_single(n):" in prompt:
+            return "def fizzbuzz_single(n):\n    if n % 15 == 0: return 'FizzBuzz'\n    if n % 3 == 0: return 'Fizz'\n    if n % 5 == 0: return 'Buzz'\n    return str(n)"
+        if "def abs_value(n):" in prompt:
+            return "def abs_value(n):\n    return n if n >= 0 else -n"
+        if "def is_palindrome(s):" in prompt:
+            return "def is_palindrome(s):\n    s = s.lower().replace(' ', '')\n    return s == s[::-1]"
+        if "def binary_search(arr, target):" in prompt:
+            return "def binary_search(arr, target):\n    lo, hi = 0, len(arr) - 1\n    while lo <= hi:\n        mid = (lo + hi) // 2\n        if arr[mid] == target: return mid\n        elif arr[mid] < target: lo = mid + 1\n        else: hi = mid - 1\n    return -1"
+
+        # --- Code probe (hard) ---
         if "def flatten(lst):" in prompt:
             return "def flatten(lst):\n    result = []\n    for item in lst:\n        if isinstance(item, list):\n            result.extend(flatten(item))\n        else:\n            result.append(item)\n    return result"
         if "def lcs(a, b):" in prompt:
@@ -148,7 +176,25 @@ class MockAdapter:
         if ("battleship" in p or "next shot" in p) and ("coordinate" in p or "grid" in p):
             return self._perfect_spatial(prompt)
 
-        # --- Factual probe ---
+        # --- Factual probe (easy) ---
+        if "atomic number of gold" in p:
+            return "79"
+        if "world war 2 end" in p or "world war ii end" in p:
+            return "1945"
+        if "bones" in p and "human body" in p:
+            return "206"
+        if "how many continents" in p:
+            return "7"
+        if "speed of light" in p and "km" in p:
+            return "299792"
+        if "chromosomes" in p and "human" in p:
+            return "46"
+        if "boiling point of water" in p:
+            return "100"
+        if "chemical symbol" in p and "iron" in p:
+            return "Fe"
+
+        # --- Factual probe (hard) ---
         if "melting point of tungsten" in p:
             return "3422"
         if "electron" in p and "kev" in p:
@@ -299,7 +345,8 @@ class MockAdapter:
                 or "follow this rule" in p or "follow both" in p
                 or "balance both" in p or "strict rule" in p
                 or "critical instruction" in p or "mandatory" in p
-                or "important rule" in p):
+                or "important rule" in p
+                or ("all caps" in p and "color" in p and "sky" in p)):
             return self._perfect_instruction(prompt)
 
         # --- Hallucination probe ---
@@ -333,6 +380,7 @@ class MockAdapter:
             "guilt": "2", "anger": "7", "surprise": "7", "relief": "9",
             "jealousy": "5", "pride": "8", "betrayal": "9", "gratitude": "8",
             "shame": "8", "anxiety": "7", "contentment": "7", "frustration": "8",
+            "joy": "8", "ambivalence": "6", "conflicted": "7", "disbelief": "6",
         }
         for emotion, digit in eq_map.items():
             if emotion in p:
@@ -375,12 +423,12 @@ class MockAdapter:
         ungrammatical_markers = [
             "the children plays",
             "him went",
-            "the dog that the cat that the rat bit chased died",
             "she don't",
             "they was",
             "a books",
             "he goed",
             "more taller",
+            "between you and i",
         ]
         for marker in ungrammatical_markers:
             if marker in p:
@@ -394,17 +442,17 @@ class MockAdapter:
         task = p.split("available tools")[0] if "available tools" in p else p
         # Map task keywords to correct tool answers
         task_map = [
-            (["english to french", "convert", "language", "translate"], "translator"),
-            (["reduce", "report", "paragraph", "condense", "summarize"], "summarizer"),
+            (["english to french", "language", "translate"], "translator"),
+            (["reduce", "report", "paragraph", "condense", "summarize", "transcripts", "themes"], "summarizer"),
             (["interest", "compound", "loan", "calculate", "math"], "calculator"),
             (["find", "research", "papers", "search", "mentioning"], "searcher"),
             (["smaller", "archival", "log file", "compress", "reduce data"], "compressor"),
             (["protect", "password", "encrypt", "secure"], "encryptor"),
-            (["csv", "json", "reformat", "convert"], "converter"),
-            (["arrange", "gpa", "highest to lowest", "order", "sort"], "sorter"),
-            (["extract", "status", "active", "filter", "rows where"], "filterer"),
+            (["extract", "status", "active", "filter", "rows where", "only rows"], "filterer"),
             (["combine", "databases", "unified", "merge"], "merger"),
-            (["well-formed", "valid", "xml", "check", "validate"], "validator"),
+            (["csv", "reformat", "soap", "transform", "convert"], "converter"),
+            (["well-formed", "valid", "xml", "check", "validate", "conform", "schema"], "validator"),
+            (["arrange", "gpa", "highest to lowest", "order", "sort"], "sorter"),
             (["reindent", "clean up", "messy", "readability", "format"], "formatter"),
         ]
         for keywords, tool in task_map:
@@ -428,6 +476,10 @@ class MockAdapter:
             "telescope": "microscope",
             "oasis": "island",
             "key": "password",
+            "teacher": "patient",
+            "bark": "cat",
+            "menu": "meal",
+            "cocoon": "tree",
         }
         for keyword, answer in analogy_map.items():
             if keyword in p:
@@ -453,6 +505,11 @@ class MockAdapter:
             "machine learning": "ABCDE",
             "mobile app": "ABCDE",
             "aquarium": "ABCDE",
+            "fundraiser": "ABCDE",
+            "vintage car": "ABCDE",
+            "solar": "ABCDE",
+            "documentary": "ABCDE",
+            "product line": "ABCDE",
         }
         for keyword, order in planning_answers.items():
             if keyword in p:
@@ -644,6 +701,8 @@ class MockAdapter:
             return "Life Grows With Warm Light."
         if "longer than 6 letters" in p and "3 words" in p and "lowercase" in p:
             return "electric magnetic function"
+        if "all caps" in p and "color" in p and "sky" in p:
+            return "THE SKY IS BLUE."
         return "HELLO WORLD 42!"
 
     def _perfect_temporal(self, prompt: str) -> str:

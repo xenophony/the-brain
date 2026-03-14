@@ -11,7 +11,42 @@ Maps to: default mode network / associative thinking circuits.
 
 from probes.registry import BaseProbe, register_probe
 
-ANALOGIES = [
+EASY_ITEMS = [
+    {
+        "prompt": "Hand is to glove as foot is to ___. Answer with only one word.",
+        "accept": ["sock", "shoe", "boot"],
+    },
+    {
+        "prompt": "Book is to library as painting is to ___. Answer with only one word.",
+        "accept": ["museum", "gallery"],
+    },
+    {
+        "prompt": "Lock is to key as account is to ___. Answer with only one word.",
+        "accept": ["password", "credential"],
+    },
+    {
+        "prompt": "Summer is to winter as day is to ___. Answer with only one word.",
+        "accept": ["night"],
+    },
+    {
+        "prompt": "Stars is to telescope as cells is to ___. Answer with only one word.",
+        "accept": ["microscope"],
+    },
+    {
+        "prompt": "Desert is to oasis as ocean is to ___. Answer with only one word.",
+        "accept": ["island"],
+    },
+    {
+        "prompt": "Teacher is to student as doctor is to ___. Answer with only one word.",
+        "accept": ["patient"],
+    },
+    {
+        "prompt": "Bark is to dog as meow is to ___. Answer with only one word.",
+        "accept": ["cat"],
+    },
+]
+
+HARD_ITEMS = [
     {
         "prompt": "Canvas is to painter as score is to ___. Answer with only one word.",
         "accept": ["composer", "musician"],
@@ -25,14 +60,6 @@ ANALOGIES = [
         "accept": ["ear"],
     },
     {
-        "prompt": "Hand is to glove as foot is to ___. Answer with only one word.",
-        "accept": ["sock", "shoe", "boot"],
-    },
-    {
-        "prompt": "Book is to library as painting is to ___. Answer with only one word.",
-        "accept": ["museum", "gallery"],
-    },
-    {
         "prompt": "Ship is to captain as orchestra is to ___. Answer with only one word.",
         "accept": ["conductor", "maestro"],
     },
@@ -41,26 +68,21 @@ ANALOGIES = [
         "accept": ["pen", "quill"],
     },
     {
-        "prompt": "Summer is to winter as day is to ___. Answer with only one word.",
-        "accept": ["night"],
-    },
-    {
         "prompt": "Building is to architect as play is to ___. Answer with only one word.",
         "accept": ["playwright", "dramatist", "writer"],
     },
     {
-        "prompt": "Stars is to telescope as cells is to ___. Answer with only one word.",
-        "accept": ["microscope"],
+        "prompt": "Map is to territory as menu is to ___. Answer with only one word.",
+        "accept": ["meal", "food", "restaurant", "cuisine"],
     },
     {
-        "prompt": "Desert is to oasis as ocean is to ___. Answer with only one word.",
-        "accept": ["island"],
-    },
-    {
-        "prompt": "Lock is to key as account is to ___. Answer with only one word.",
-        "accept": ["password", "credential"],
+        "prompt": "Cocoon is to butterfly as seed is to ___. Answer with only one word.",
+        "accept": ["tree", "plant", "flower"],
     },
 ]
+
+# Legacy alias
+ANALOGIES = EASY_ITEMS + HARD_ITEMS
 
 
 def score_analogy(response: str, accepted: list[str]) -> float:
@@ -83,10 +105,17 @@ class HolisticProbe(BaseProbe):
     name = "holistic"
     description = "Analogy completion — default mode network circuits"
 
-    def run(self, model) -> float:
-        scores = []
-        for item in ANALOGIES:
+    def run(self, model) -> dict:
+        easy_scores = []
+        for item in EASY_ITEMS:
             response = model.generate_short(item["prompt"], max_new_tokens=10, temperature=0.0)
             score = score_analogy(response, item["accept"])
-            scores.append(score)
-        return sum(scores) / len(scores)
+            easy_scores.append(score)
+
+        hard_scores = []
+        for item in HARD_ITEMS:
+            response = model.generate_short(item["prompt"], max_new_tokens=10, temperature=0.0)
+            score = score_analogy(response, item["accept"])
+            hard_scores.append(score)
+
+        return self._make_result(easy_scores, hard_scores)

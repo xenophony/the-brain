@@ -89,6 +89,31 @@ def _simulate_midgame(rng, ship_cells):
     return board
 
 
+def _simulate_easy_board(rng, ship_cells):
+    """
+    Simulate an easy board state: single isolated hit, no adjacent misses.
+    This makes the obvious next move very clear.
+    """
+    board = _make_empty_board()
+    # Pick one random ship cell to be a hit
+    ship_list = list(ship_cells)
+    rng.shuffle(ship_list)
+    hit_cell = ship_list[0]
+    board[hit_cell[0]][hit_cell[1]] = 'H'
+
+    # Add some misses far from the hit
+    for r in range(BOARD_SIZE):
+        for c in range(BOARD_SIZE):
+            if (r, c) in ship_cells:
+                continue
+            # Skip cells adjacent to the hit
+            if abs(r - hit_cell[0]) + abs(c - hit_cell[1]) <= 2:
+                continue
+            if rng.random() < 0.15:
+                board[r][c] = 'M'
+    return board
+
+
 def _has_hits(board):
     """Check if board has at least one hit."""
     for r in range(BOARD_SIZE):
@@ -96,6 +121,16 @@ def _has_hits(board):
             if board[r][c] == 'H':
                 return True
     return False
+
+
+def _count_hits(board):
+    """Count number of hits on the board."""
+    count = 0
+    for r in range(BOARD_SIZE):
+        for c in range(BOARD_SIZE):
+            if board[r][c] == 'H':
+                count += 1
+    return count
 
 
 def generate_boards(seed=SEED, n=N_BOARDS):
@@ -113,6 +148,40 @@ def generate_boards(seed=SEED, n=N_BOARDS):
             ship_cells, placements = _place_ships(rng)
             board = _simulate_midgame(rng, ship_cells)
             if _has_hits(board):
+                boards.append((board, ship_cells, placements))
+        except RuntimeError:
+            continue
+    return boards
+
+
+def generate_easy_boards(seed=SEED, n=10):
+    """Generate easy boards with single isolated hits."""
+    rng = random.Random(seed + 1000)  # Different seed space from standard boards
+    boards = []
+    attempts = 0
+    while len(boards) < n and attempts < n * 10:
+        attempts += 1
+        try:
+            ship_cells, placements = _place_ships(rng)
+            board = _simulate_easy_board(rng, ship_cells)
+            if _has_hits(board):
+                boards.append((board, ship_cells, placements))
+        except RuntimeError:
+            continue
+    return boards
+
+
+def generate_hard_boards(seed=SEED, n=10):
+    """Generate hard boards with 3+ hits and complex multi-ship states."""
+    rng = random.Random(seed + 2000)  # Different seed space
+    boards = []
+    attempts = 0
+    while len(boards) < n and attempts < n * 20:
+        attempts += 1
+        try:
+            ship_cells, placements = _place_ships(rng)
+            board = _simulate_midgame(rng, ship_cells)
+            if _count_hits(board) >= 3:
                 boards.append((board, ship_cells, placements))
         except RuntimeError:
             continue
@@ -261,21 +330,32 @@ class SpatialProbe(BaseProbe):
     description = "Battleship next-move spatial reasoning — parietal/visual circuits"
 
     def __init__(self):
-        self._boards = None
+        self._easy_boards = None
+        self._hard_boards = None
 
     def _ensure_boards(self):
-        if self._boards is None:
-            self._boards = generate_boards(seed=SEED, n=N_BOARDS)
+        if self._easy_boards is None:
+            self._easy_boards = generate_easy_boards(seed=SEED, n=10)
+        if self._hard_boards is None:
+            self._hard_boards = generate_hard_boards(seed=SEED, n=10)
 
-    def run(self, model) -> float:
+    def run(self, model) -> dict:
         self._ensure_boards()
-        scores = []
 
-        for board, _ship_cells, _placements in self._boards:
+        easy_scores = []
+        for board, _ship_cells, _placements in self._easy_boards:
             ascii_board = board_to_ascii(board)
             prompt = PROMPT_TEMPLATE.format(board_ascii=ascii_board)
             response = model.generate_short(prompt, max_new_tokens=5, temperature=0.0)
             score = score_response(response, board)
-            scores.append(score)
+            easy_scores.append(score)
 
-        return sum(scores) / len(scores) if scores else 0.0
+        hard_scores = []
+        for board, _ship_cells, _placements in self._hard_boards:
+            ascii_board = board_to_ascii(board)
+            prompt = PROMPT_TEMPLATE.format(board_ascii=ascii_board)
+            response = model.generate_short(prompt, max_new_tokens=5, temperature=0.0)
+            score = score_response(response, board)
+            hard_scores.append(score)
+
+        return self._make_result(easy_scores, hard_scores)

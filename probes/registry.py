@@ -14,9 +14,20 @@ class BaseProbe(ABC):
     description: str = ""
 
     @abstractmethod
-    def run(self, model) -> float:
-        """Run the probe against a model adapter, return score in [0.0, 1.0]."""
+    def run(self, model) -> "float | dict":
+        """Run the probe against a model adapter, return score in [0.0, 1.0] or result dict."""
         ...
+
+    def _make_result(self, easy_scores: list[float], hard_scores: list[float]) -> dict:
+        """Build standardized result dict from easy and hard score lists."""
+        all_scores = easy_scores + hard_scores
+        return {
+            "score": sum(all_scores) / len(all_scores) if all_scores else 0.0,
+            "easy_score": sum(easy_scores) / len(easy_scores) if easy_scores else 0.0,
+            "hard_score": sum(hard_scores) / len(hard_scores) if hard_scores else 0.0,
+            "n_easy": len(easy_scores),
+            "n_hard": len(hard_scores),
+        }
 
     def expected_digit_score(self, response: str, expected: int) -> float:
         """Score a digit response with partial credit for near-misses."""

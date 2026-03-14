@@ -1,7 +1,7 @@
 """
 Instruction following probe — comply with multiple explicit constraints.
 
-Each scenario gives 3-4 constraints. The model must produce a short response
+Each scenario gives 1-4 constraints. The model must produce a short response
 that satisfies all of them. Each constraint has a programmatic checker.
 
 Output: short text (< 20 tokens).
@@ -115,7 +115,7 @@ def _is_bullet_points(response: str) -> bool:
     lines = [l.strip() for l in response.strip().split("\n") if l.strip()]
     if len(lines) < 2:
         return False
-    return all(l.startswith(("-", "*", "•")) for l in lines)
+    return all(l.startswith(("-", "*", "\u2022")) for l in lines)
 
 
 def _max_words(response: str, n: int) -> bool:
@@ -123,7 +123,8 @@ def _max_words(response: str, n: int) -> bool:
     return len(response.strip().split()) <= n
 
 
-SCENARIOS = [
+EASY_ITEMS = [
+    # Simple 3-constraint scenarios
     {
         "prompt": (
             "Write a short response (under 10 words) that satisfies ALL these constraints:\n"
@@ -155,76 +156,6 @@ SCENARIOS = [
     {
         "prompt": (
             "Write a short response (under 10 words) that satisfies ALL these constraints:\n"
-            "1. Starts with the letter Z\n"
-            "2. Contains at least one number\n"
-            "3. All letters must be uppercase\n"
-            "Follow these rules exactly."
-        ),
-        "checkers": [
-            ("starts_with_z", lambda r: _starts_with_letter(r, "Z")),
-            ("has_number", _has_number),
-            ("all_uppercase", _has_uppercase),
-        ],
-    },
-    {
-        "prompt": (
-            "Write a short response (under 10 words) that satisfies ALL these constraints:\n"
-            "1. Contains no vowels (a, e, i, o, u) in any word\n"
-            "2. Contains at least one number\n"
-            "3. Ends with an exclamation mark\n"
-            "Follow these rules exactly."
-        ),
-        "checkers": [
-            ("no_vowels", _no_vowels),
-            ("has_number", _has_number),
-            ("ends_exclamation", _ends_with_exclamation),
-        ],
-    },
-    {
-        "prompt": (
-            "Write a short response (under 10 words) that satisfies ALL these constraints:\n"
-            "1. Contains a palindrome word (at least 3 letters)\n"
-            "2. Contains at least one number\n"
-            "3. Ends with an exclamation mark\n"
-            "Follow these rules exactly."
-        ),
-        "checkers": [
-            ("palindrome", _is_palindrome_word),
-            ("has_number", _has_number),
-            ("ends_exclamation", _ends_with_exclamation),
-        ],
-    },
-    {
-        "prompt": (
-            "Write a short response (under 10 words) that satisfies ALL these constraints:\n"
-            "1. Contains the name of a color\n"
-            "2. Contains the name of an animal\n"
-            "3. Contains at least one number\n"
-            "Follow these rules exactly."
-        ),
-        "checkers": [
-            ("has_color", _contains_color),
-            ("has_animal", _contains_animal),
-            ("has_number", _has_number),
-        ],
-    },
-    {
-        "prompt": (
-            "Write a short response (under 10 words) that satisfies ALL these constraints:\n"
-            "1. Uses alliteration (all words start with the same letter)\n"
-            "2. At least 3 words\n"
-            "3. All letters must be uppercase\n"
-            "Follow these rules exactly."
-        ),
-        "checkers": [
-            ("alliteration", _all_words_same_first_letter),
-            ("at_least_3_words", lambda r: len(r.strip().split()) >= 3),
-            ("all_uppercase", _has_uppercase),
-        ],
-    },
-    {
-        "prompt": (
-            "Write a short response (under 10 words) that satisfies ALL these constraints:\n"
             "1. Ends with a period\n"
             "2. Contains at least one number\n"
             "3. Exactly 4 words\n"
@@ -236,39 +167,62 @@ SCENARIOS = [
             ("exactly_4_words", lambda r: _word_count(r, 4)),
         ],
     },
+    # Type B: single-check instruction persistence
     {
         "prompt": (
-            "Write a short response (under 10 words) that satisfies ALL these constraints:\n"
-            "1. Starts with the letter A\n"
-            "2. Ends with an exclamation mark\n"
-            "3. All letters must be uppercase\n"
-            "4. Contains at least one number\n"
-            "Follow these rules exactly."
+            "IMPORTANT RULE: You must respond ONLY with bullet points. "
+            "No prose, no sentences, only bullet points starting with '-'. "
+            "List 3 colors.\n"
+            "Follow this rule exactly."
         ),
         "checkers": [
-            ("starts_with_a", lambda r: _starts_with_letter(r, "A")),
-            ("ends_exclamation", _ends_with_exclamation),
-            ("all_uppercase", _has_uppercase),
-            ("has_number", _has_number),
+            ("is_bullet_points", _is_bullet_points),
         ],
     },
     {
         "prompt": (
-            "Write a short response (under 10 words) that satisfies ALL these constraints:\n"
-            "1. Contains exactly 2 words\n"
-            "2. Both words must start with the same letter\n"
-            "3. Contains at least one number\n"
-            "4. Ends with a period\n"
-            "Follow these rules exactly."
+            "CRITICAL INSTRUCTION: Your entire response must be in ALL CAPS. "
+            "No lowercase letters at all. Tell me a fact about the moon.\n"
+            "Follow this rule exactly."
+        ),
+        "checkers": [
+            ("all_uppercase", _has_uppercase),
+        ],
+    },
+    {
+        "prompt": (
+            "STRICT RULE: Respond with exactly 2 words. Nothing more, nothing less. "
+            "What do you think about rain?\n"
+            "Follow this rule exactly."
         ),
         "checkers": [
             ("exactly_2_words", lambda r: _word_count(r, 2)),
-            ("same_first_letter", lambda r: _all_words_same_first_letter(r) if len(r.strip().split()) >= 2 else False),
-            ("has_number", _has_number),
-            ("ends_period", _ends_with_period),
         ],
     },
-    # --- Conflicting-constraint scenarios (fight natural language defaults) ---
+    {
+        "prompt": (
+            "MANDATORY: End every sentence with an exclamation mark. No periods. "
+            "Write two sentences about the sun.\n"
+            "Follow this rule exactly."
+        ),
+        "checkers": [
+            ("ends_exclamation", _ends_with_exclamation),
+            ("no_periods", lambda r: "." not in r.strip()),
+        ],
+    },
+    {
+        "prompt": (
+            "Respond in ALL CAPS. Your answer should be one sentence.\n"
+            "What color is the sky?"
+        ),
+        "checkers": [
+            ("all_uppercase", _has_uppercase),
+        ],
+    },
+]
+
+HARD_ITEMS = [
+    # Conflicting-constraint scenarios
     {
         "prompt": (
             "Write a short response that satisfies ALL these constraints:\n"
@@ -315,7 +269,7 @@ SCENARIOS = [
             ("ends_exclamation", _ends_with_exclamation),
         ],
     },
-    # --- Type A: instruction vs model preference conflict ---
+    # Type A: instruction vs model preference conflict
     {
         "prompt": (
             "Respond only in formal English. Do not use any contractions. "
@@ -360,62 +314,7 @@ SCENARIOS = [
             ("ends_period", _ends_with_period),
         ],
     },
-    {
-        "prompt": (
-            "Write a response with no adjectives. Use only nouns and verbs. "
-            "Exactly 4 words. End with a period.\n"
-            "Follow these rules exactly."
-        ),
-        "checkers": [
-            ("exactly_4_words", lambda r: _word_count(r, 4)),
-            ("ends_period", _ends_with_period),
-            ("has_letter", lambda r: any(ch.isalpha() for ch in r)),
-        ],
-    },
-    # --- Type B: instruction vs social pressure (instruction persistence) ---
-    {
-        "prompt": (
-            "IMPORTANT RULE: You must respond ONLY with bullet points. "
-            "No prose, no sentences, only bullet points starting with '-'. "
-            "List 3 colors.\n"
-            "Follow this rule exactly."
-        ),
-        "checkers": [
-            ("is_bullet_points", _is_bullet_points),
-        ],
-    },
-    {
-        "prompt": (
-            "CRITICAL INSTRUCTION: Your entire response must be in ALL CAPS. "
-            "No lowercase letters at all. Tell me a fact about the moon.\n"
-            "Follow this rule exactly."
-        ),
-        "checkers": [
-            ("all_uppercase", _has_uppercase),
-        ],
-    },
-    {
-        "prompt": (
-            "STRICT RULE: Respond with exactly 2 words. Nothing more, nothing less. "
-            "What do you think about rain?\n"
-            "Follow this rule exactly."
-        ),
-        "checkers": [
-            ("exactly_2_words", lambda r: _word_count(r, 2)),
-        ],
-    },
-    {
-        "prompt": (
-            "MANDATORY: End every sentence with an exclamation mark. No periods. "
-            "Write two sentences about the sun.\n"
-            "Follow this rule exactly."
-        ),
-        "checkers": [
-            ("ends_exclamation", _ends_with_exclamation),
-            ("no_periods", lambda r: "." not in r.strip()),
-        ],
-    },
-    # --- Type C: nested instruction conflict ---
+    # Type C: nested instruction conflict
     {
         "prompt": (
             "Be extremely concise (max 5 words). Also be very specific and detailed. "
@@ -425,25 +324,6 @@ SCENARIOS = [
         "checkers": [
             ("max_5_words", lambda r: _max_words(r, 5)),
             ("has_content", lambda r: len(r.strip()) > 5),
-        ],
-    },
-    {
-        "prompt": (
-            "Use only simple words (no word longer than 5 letters). "
-            "Also, every word must start with a capital letter. "
-            "Write a sentence about science.\n"
-            "Follow both rules."
-        ),
-        "checkers": [
-            ("short_words", lambda r: all(
-                len(re.sub(r'[^a-zA-Z]', '', w)) <= 5
-                for w in r.strip().split() if w
-            ) if r.strip() else False),
-            ("all_caps_start", lambda r: all(
-                w[0].isupper()
-                for w in r.strip().split()
-                if w and w[0].isalpha()
-            ) if r.strip() else False),
         ],
     },
     {
@@ -463,19 +343,21 @@ SCENARIOS = [
     },
 ]
 
+# Legacy alias
+SCENARIOS = EASY_ITEMS + HARD_ITEMS
+
 
 @register_probe
 class InstructionProbe(BaseProbe):
     name = "instruction"
     description = "Multi-constraint instruction following — working memory circuits"
 
-    def run(self, model) -> float:
-        scores = []
-        for scenario in SCENARIOS:
+    def run(self, model) -> dict:
+        easy_scores = []
+        for scenario in EASY_ITEMS:
             response = model.generate_short(
                 scenario["prompt"], max_new_tokens=20, temperature=0.0
             )
-            # Score = fraction of constraints satisfied
             n_constraints = len(scenario["checkers"])
             satisfied = 0
             for _name, checker in scenario["checkers"]:
@@ -484,5 +366,21 @@ class InstructionProbe(BaseProbe):
                         satisfied += 1
                 except Exception:
                     pass
-            scores.append(satisfied / n_constraints)
-        return sum(scores) / len(scores)
+            easy_scores.append(satisfied / n_constraints)
+
+        hard_scores = []
+        for scenario in HARD_ITEMS:
+            response = model.generate_short(
+                scenario["prompt"], max_new_tokens=20, temperature=0.0
+            )
+            n_constraints = len(scenario["checkers"])
+            satisfied = 0
+            for _name, checker in scenario["checkers"]:
+                try:
+                    if checker(response):
+                        satisfied += 1
+                except Exception:
+                    pass
+            hard_scores.append(satisfied / n_constraints)
+
+        return self._make_result(easy_scores, hard_scores)

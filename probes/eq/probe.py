@@ -11,30 +11,14 @@ Maps to: limbic system / emotional processing circuits.
 
 from probes.registry import BaseProbe, register_probe
 
-SCENARIOS = [
+EASY_ITEMS = [
     {
         "prompt": (
-            "A colleague takes credit for your work in a meeting. "
-            "How intensely would you feel guilt on a scale of 0 (none) to 9 (extreme)? "
+            "You discover that a trusted partner has been lying to you for months. "
+            "How intensely would you feel betrayal on a scale of 0 (none) to 9 (extreme)? "
             "Answer with only a digit."
         ),
-        "expected": 2,
-    },
-    {
-        "prompt": (
-            "Someone cuts in front of you in a long queue and smirks. "
-            "How intensely would you feel anger on a scale of 0 (none) to 9 (extreme)? "
-            "Answer with only a digit."
-        ),
-        "expected": 7,
-    },
-    {
-        "prompt": (
-            "You receive an unexpected gift from a friend you haven't spoken to in years. "
-            "How intensely would you feel surprise on a scale of 0 (none) to 9 (extreme)? "
-            "Answer with only a digit."
-        ),
-        "expected": 7,
+        "expected": 9,
     },
     {
         "prompt": (
@@ -46,11 +30,11 @@ SCENARIOS = [
     },
     {
         "prompt": (
-            "Your best friend gets the promotion you were both competing for. "
-            "How intensely would you feel jealousy on a scale of 0 (none) to 9 (extreme)? "
+            "Your computer crashes and you lose an entire day's unsaved work. "
+            "How intensely would you feel frustration on a scale of 0 (none) to 9 (extreme)? "
             "Answer with only a digit."
         ),
-        "expected": 5,
+        "expected": 8,
     },
     {
         "prompt": (
@@ -62,11 +46,11 @@ SCENARIOS = [
     },
     {
         "prompt": (
-            "You discover that a trusted partner has been lying to you for months. "
-            "How intensely would you feel betrayal on a scale of 0 (none) to 9 (extreme)? "
+            "Someone cuts in front of you in a long queue and smirks. "
+            "How intensely would you feel anger on a scale of 0 (none) to 9 (extreme)? "
             "Answer with only a digit."
         ),
-        "expected": 9,
+        "expected": 7,
     },
     {
         "prompt": (
@@ -86,11 +70,30 @@ SCENARIOS = [
     },
     {
         "prompt": (
-            "You are waiting for important medical test results that will arrive tomorrow. "
-            "How intensely would you feel anxiety on a scale of 0 (none) to 9 (extreme)? "
+            "Your child wins a school science fair you helped them prepare for. "
+            "How intensely would you feel joy on a scale of 0 (none) to 9 (extreme)? "
             "Answer with only a digit."
         ),
-        "expected": 7,
+        "expected": 8,
+    },
+]
+
+HARD_ITEMS = [
+    {
+        "prompt": (
+            "A colleague takes credit for your work in a meeting. "
+            "How intensely would you feel guilt on a scale of 0 (none) to 9 (extreme)? "
+            "Answer with only a digit."
+        ),
+        "expected": 2,
+    },
+    {
+        "prompt": (
+            "Your best friend gets the promotion you were both competing for. "
+            "How intensely would you feel jealousy on a scale of 0 (none) to 9 (extreme)? "
+            "Answer with only a digit."
+        ),
+        "expected": 5,
     },
     {
         "prompt": (
@@ -102,13 +105,48 @@ SCENARIOS = [
     },
     {
         "prompt": (
-            "Your computer crashes and you lose an entire day's unsaved work. "
-            "How intensely would you feel frustration on a scale of 0 (none) to 9 (extreme)? "
+            "You receive an unexpected gift from a friend you haven't spoken to in years. "
+            "How intensely would you feel surprise on a scale of 0 (none) to 9 (extreme)? "
             "Answer with only a digit."
         ),
-        "expected": 8,
+        "expected": 7,
+    },
+    {
+        "prompt": (
+            "You are waiting for important medical test results that will arrive tomorrow. "
+            "How intensely would you feel anxiety on a scale of 0 (none) to 9 (extreme)? "
+            "Answer with only a digit."
+        ),
+        "expected": 7,
+    },
+    {
+        "prompt": (
+            "You win an award but know a colleague deserved it more. "
+            "How intensely would you feel ambivalence on a scale of 0 (none) to 9 (extreme)? "
+            "Answer with only a digit."
+        ),
+        "expected": 6,
+    },
+    {
+        "prompt": (
+            "Your ex-partner who hurt you badly asks you for help during a crisis. "
+            "How intensely would you feel conflicted on a scale of 0 (none) to 9 (extreme)? "
+            "Answer with only a digit."
+        ),
+        "expected": 7,
+    },
+    {
+        "prompt": (
+            "You get a standing ovation after a presentation you thought went poorly. "
+            "How intensely would you feel disbelief on a scale of 0 (none) to 9 (extreme)? "
+            "Answer with only a digit."
+        ),
+        "expected": 6,
     },
 ]
+
+# Legacy alias
+SCENARIOS = EASY_ITEMS + HARD_ITEMS
 
 
 @register_probe
@@ -116,12 +154,21 @@ class EQProbe(BaseProbe):
     name = "eq"
     description = "Emotional intensity estimation — limbic system circuits"
 
-    def run(self, model) -> float:
-        scores = []
-        for scenario in SCENARIOS:
+    def run(self, model) -> dict:
+        easy_scores = []
+        for scenario in EASY_ITEMS:
             response = model.generate_short(
                 scenario["prompt"], max_new_tokens=5, temperature=0.0
             )
             score = self.expected_digit_score(response, scenario["expected"])
-            scores.append(score)
-        return sum(scores) / len(scores)
+            easy_scores.append(score)
+
+        hard_scores = []
+        for scenario in HARD_ITEMS:
+            response = model.generate_short(
+                scenario["prompt"], max_new_tokens=5, temperature=0.0
+            )
+            score = self.expected_digit_score(response, scenario["expected"])
+            hard_scores.append(score)
+
+        return self._make_result(easy_scores, hard_scores)

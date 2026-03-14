@@ -12,7 +12,7 @@ Maps to: frontal lobe / executive function circuits.
 
 from probes.registry import BaseProbe, register_probe
 
-SCENARIOS = [
+EASY_ITEMS = [
     {
         "task": "Convert a document from English to French.",
         "tools": {
@@ -54,16 +54,6 @@ SCENARIOS = [
         "answer": "searcher",
     },
     {
-        "task": "Make a large log file smaller for archival storage.",
-        "tools": {
-            "compressor": "Reduces data size",
-            "summarizer": "Condenses text to key points",
-            "formatter": "Adjusts text layout and style",
-            "validator": "Checks text for errors",
-        },
-        "answer": "compressor",
-    },
-    {
         "task": "Protect a file containing passwords before sending it over email.",
         "tools": {
             "compressor": "Reduces data size",
@@ -72,16 +62,6 @@ SCENARIOS = [
             "searcher": "Finds information in databases",
         },
         "answer": "encryptor",
-    },
-    {
-        "task": "Reformat a CSV into a properly indented JSON structure.",
-        "tools": {
-            "sorter": "Orders items by criteria",
-            "validator": "Checks text for errors",
-            "formatter": "Adjusts text layout and style",
-            "converter": "Changes data between formats",
-        },
-        "answer": "converter",
     },
     {
         "task": "Arrange a list of student records by GPA from highest to lowest.",
@@ -104,16 +84,6 @@ SCENARIOS = [
         "answer": "filterer",
     },
     {
-        "task": "Combine three separate customer databases into one unified dataset.",
-        "tools": {
-            "filterer": "Selects items matching conditions",
-            "sorter": "Orders items by criteria",
-            "merger": "Combines multiple data sources",
-            "compressor": "Reduces data size",
-        },
-        "answer": "merger",
-    },
-    {
         "task": "Check whether an XML configuration file is well-formed and valid.",
         "tools": {
             "formatter": "Adjusts text layout and style",
@@ -122,6 +92,39 @@ SCENARIOS = [
             "compressor": "Reduces data size",
         },
         "answer": "validator",
+    },
+]
+
+HARD_ITEMS = [
+    {
+        "task": "Make a large log file smaller for archival storage.",
+        "tools": {
+            "compressor": "Reduces data size",
+            "summarizer": "Condenses text to key points",
+            "formatter": "Adjusts text layout and style",
+            "validator": "Checks text for errors",
+        },
+        "answer": "compressor",
+    },
+    {
+        "task": "Reformat a CSV into a properly indented JSON structure.",
+        "tools": {
+            "sorter": "Orders items by criteria",
+            "validator": "Checks text for errors",
+            "formatter": "Adjusts text layout and style",
+            "converter": "Changes data between formats",
+        },
+        "answer": "converter",
+    },
+    {
+        "task": "Combine three separate customer databases into one unified dataset.",
+        "tools": {
+            "filterer": "Selects items matching conditions",
+            "sorter": "Orders items by criteria",
+            "merger": "Combines multiple data sources",
+            "compressor": "Reduces data size",
+        },
+        "answer": "merger",
     },
     {
         "task": "Reindent and clean up a messy HTML document for readability.",
@@ -133,7 +136,50 @@ SCENARIOS = [
         },
         "answer": "formatter",
     },
+    {
+        "task": "A user uploaded a spreadsheet and wants to see only rows from Q4 2024 sorted by revenue.",
+        "tools": {
+            "filterer": "Selects items matching conditions",
+            "sorter": "Orders items by criteria",
+            "summarizer": "Condenses text to key points",
+            "converter": "Changes data between formats",
+        },
+        "answer": "filterer",
+    },
+    {
+        "task": "A developer needs to detect if incoming API payloads conform to a JSON schema.",
+        "tools": {
+            "formatter": "Adjusts text layout and style",
+            "converter": "Changes data between formats",
+            "validator": "Checks text for errors",
+            "compressor": "Reduces data size",
+        },
+        "answer": "validator",
+    },
+    {
+        "task": "A researcher wants to condense 50 interview transcripts into key themes, then find the original quotes.",
+        "tools": {
+            "summarizer": "Condenses text to key points",
+            "searcher": "Finds information in databases",
+            "filterer": "Selects items matching conditions",
+            "formatter": "Adjusts text layout and style",
+        },
+        "answer": "summarizer",
+    },
+    {
+        "task": "Transform a legacy SOAP XML response into a modern REST JSON format while preserving all fields.",
+        "tools": {
+            "converter": "Changes data between formats",
+            "formatter": "Adjusts text layout and style",
+            "validator": "Checks text for errors",
+            "translator": "Converts text between languages",
+        },
+        "answer": "converter",
+    },
 ]
+
+# Legacy alias
+SCENARIOS = EASY_ITEMS + HARD_ITEMS
 
 PROMPT_TEMPLATE = (
     "Task: {task}\n\n"
@@ -157,14 +203,25 @@ class ToolUseProbe(BaseProbe):
     name = "tool_use"
     description = "Tool selection routing — frontal lobe circuits"
 
-    def run(self, model) -> float:
-        scores = []
-        for scenario in SCENARIOS:
+    def run(self, model) -> dict:
+        easy_scores = []
+        for scenario in EASY_ITEMS:
             tool_list = "\n".join(
                 f"  - {name}: {desc}" for name, desc in scenario["tools"].items()
             )
             prompt = PROMPT_TEMPLATE.format(task=scenario["task"], tool_list=tool_list)
             response = model.generate_short(prompt, max_new_tokens=10, temperature=0.0)
             score = score_tool_use(response, scenario["answer"])
-            scores.append(score)
-        return sum(scores) / len(scores)
+            easy_scores.append(score)
+
+        hard_scores = []
+        for scenario in HARD_ITEMS:
+            tool_list = "\n".join(
+                f"  - {name}: {desc}" for name, desc in scenario["tools"].items()
+            )
+            prompt = PROMPT_TEMPLATE.format(task=scenario["task"], tool_list=tool_list)
+            response = model.generate_short(prompt, max_new_tokens=10, temperature=0.0)
+            score = score_tool_use(response, scenario["answer"])
+            hard_scores.append(score)
+
+        return self._make_result(easy_scores, hard_scores)

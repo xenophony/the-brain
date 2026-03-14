@@ -137,19 +137,26 @@ class SweepRunner:
         for probe_name in self.config.probe_names:
             probe = get_probe(probe_name)
             if timeout and timeout > 0:
-                scores[probe_name] = self._run_probe_with_timeout(
-                    probe, timeout
-                )
+                result = self._run_probe_with_timeout(probe, timeout)
             else:
                 try:
-                    scores[probe_name] = probe.run(self.model)
+                    result = probe.run(self.model)
                 except Exception as e:
                     print(f"  Probe {probe_name} error: {e}")
-                    scores[probe_name] = 0.0
+                    result = 0.0
+            if isinstance(result, dict):
+                scores[probe_name] = result["score"]
+                # Store difficulty breakdown if available
+                if "easy_score" in result:
+                    scores[f"{probe_name}_easy"] = result["easy_score"]
+                if "hard_score" in result:
+                    scores[f"{probe_name}_hard"] = result["hard_score"]
+            else:
+                scores[probe_name] = result
 
         return scores
 
-    def _run_probe_with_timeout(self, probe, timeout: float) -> float:
+    def _run_probe_with_timeout(self, probe, timeout: float) -> "float | dict":
         """Run a single probe with a timeout. Returns 0.0 on timeout or error."""
         result = [0.0]
         error = [None]
@@ -243,13 +250,16 @@ class SweepRunner:
                 scores = self.run_probes(baseline_path)
                 all_scores.append(scores)
 
-            # Mean baseline
+            # Mean baseline — include difficulty sub-scores if present
             self.baseline_scores = {}
             self.baseline_std = {}
-            for probe_name in self.config.probe_names:
-                values = [s[probe_name] for s in all_scores]
-                self.baseline_scores[probe_name] = float(np.mean(values))
-                self.baseline_std[probe_name] = float(np.std(values)) if n_repeats > 1 else 0.0
+            all_keys = set()
+            for s in all_scores:
+                all_keys.update(s.keys())
+            for key in all_keys:
+                values = [s.get(key, 0.0) for s in all_scores]
+                self.baseline_scores[key] = float(np.mean(values))
+                self.baseline_std[key] = float(np.std(values)) if n_repeats > 1 else 0.0
 
             print(f"Baseline scores: {self.baseline_scores}")
             if n_repeats > 1:

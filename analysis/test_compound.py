@@ -277,3 +277,82 @@ class TestFuzzyDomainMatcher:
         scores = matcher.match("calculate and implement the function")
         total = sum(scores.values())
         assert abs(total - 1.0) < 0.01, f"Scores sum to {total}, expected 1.0"
+
+
+# ------------------------------------------------------------------ #
+#  Difficulty-aware analysis tests                                     #
+# ------------------------------------------------------------------ #
+
+class TestDifficultyAnalysis:
+    def _make_synthetic_matrices(self):
+        """Create synthetic easy/hard matrices for testing."""
+        n = 6
+        easy = np.full((n, n + 1), np.nan)
+        hard = np.full((n, n + 1), np.nan)
+        # Fast-path circuit at (1,3): easy improves, hard degrades
+        easy[1, 3] = 0.15
+        hard[1, 3] = -0.05
+        # Complexity circuit at (2,5): hard improves, easy flat
+        easy[2, 5] = 0.0
+        hard[2, 5] = 0.12
+        # General circuit at (3,5): both improve
+        easy[3, 5] = 0.08
+        hard[3, 5] = 0.10
+        # Neutral at (0,2): both flat
+        easy[0, 2] = 0.01
+        hard[0, 2] = 0.01
+        return easy, hard
+
+    def test_find_fastpath_circuits(self):
+        from analysis.heatmap import find_fastpath_circuits
+        easy, hard = self._make_synthetic_matrices()
+        fast = find_fastpath_circuits(easy, hard, threshold=0.03)
+        assert len(fast) == 1
+        assert fast[0]["i"] == 1
+        assert fast[0]["j"] == 3
+        assert fast[0]["easy_delta"] > 0.1
+        assert fast[0]["hard_delta"] < 0
+
+    def test_find_complexity_circuits(self):
+        from analysis.heatmap import find_complexity_circuits
+        easy, hard = self._make_synthetic_matrices()
+        complexity = find_complexity_circuits(easy, hard, threshold=0.03)
+        assert len(complexity) == 1
+        assert complexity[0]["i"] == 2
+        assert complexity[0]["j"] == 5
+        assert complexity[0]["hard_delta"] > 0.1
+
+    def test_build_difficulty_matrices_structure(self):
+        from analysis.heatmap import build_difficulty_matrices
+        # Create minimal results with difficulty scores
+        results = [
+            {"i": 0, "j": 0, "probe_scores": {"math": 0.5, "math_easy": 0.7, "math_hard": 0.3},
+             "probe_deltas": {"math": 0.0}},
+            {"i": 1, "j": 3, "probe_scores": {"math": 0.6, "math_easy": 0.8, "math_hard": 0.4},
+             "probe_deltas": {"math": 0.1}},
+        ]
+        matrices = build_difficulty_matrices(results, "math", 4)
+        assert "overall" in matrices
+        assert "easy" in matrices
+        assert "hard" in matrices
+        assert "diff" in matrices
+        assert matrices["overall"].shape == (4, 5)
+        # Check (1,3) has correct values
+        assert not np.isnan(matrices["easy"][1, 3])
+        assert not np.isnan(matrices["hard"][1, 3])
+
+    def test_fastpath_empty_when_no_signal(self):
+        from analysis.heatmap import find_fastpath_circuits
+        n = 4
+        easy = np.full((n, n + 1), 0.01)
+        hard = np.full((n, n + 1), 0.01)
+        fast = find_fastpath_circuits(easy, hard, threshold=0.03)
+        assert len(fast) == 0
+
+    def test_complexity_empty_when_no_signal(self):
+        from analysis.heatmap import find_complexity_circuits
+        n = 4
+        easy = np.full((n, n + 1), 0.01)
+        hard = np.full((n, n + 1), 0.01)
+        complexity = find_complexity_circuits(easy, hard, threshold=0.03)
+        assert len(complexity) == 0

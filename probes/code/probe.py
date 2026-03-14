@@ -12,7 +12,121 @@ Maps to: cerebellum / motor (sequential procedure) circuits.
 import re
 from probes.registry import BaseProbe, register_probe
 
-CHALLENGES = [
+EASY_ITEMS = [
+    {
+        "prompt": (
+            "Write a Python function `is_even(n)` that returns True if n is even, False otherwise. "
+            "Output only the function, no explanation.\n\n"
+            "def is_even(n):"
+        ),
+        "test_cases": [
+            ("is_even(4)", True),
+            ("is_even(3)", False),
+            ("is_even(0)", True),
+            ("is_even(-2)", True),
+        ],
+        "extract_after": "def is_even(n):",
+    },
+    {
+        "prompt": (
+            "Write a Python function `sum_list(lst)` that returns the sum of all numbers in a list. "
+            "Output only the function, no explanation.\n\n"
+            "def sum_list(lst):"
+        ),
+        "test_cases": [
+            ("sum_list([1,2,3])", 6),
+            ("sum_list([])", 0),
+            ("sum_list([10])", 10),
+            ("sum_list([-1,1])", 0),
+        ],
+        "extract_after": "def sum_list(lst):",
+    },
+    {
+        "prompt": (
+            "Write a Python function `first_element(lst)` that returns the first element of a list, "
+            "or None if the list is empty. Output only the function, no explanation.\n\n"
+            "def first_element(lst):"
+        ),
+        "test_cases": [
+            ("first_element([1,2,3])", 1),
+            ("first_element([])", None),
+            ("first_element(['a'])", 'a'),
+        ],
+        "extract_after": "def first_element(lst):",
+    },
+    {
+        "prompt": (
+            "Write a Python function `reverse_string(s)` that returns the reversed string. "
+            "Output only the function, no explanation.\n\n"
+            "def reverse_string(s):"
+        ),
+        "test_cases": [
+            ("reverse_string('hello')", 'olleh'),
+            ("reverse_string('')", ''),
+            ("reverse_string('a')", 'a'),
+            ("reverse_string('ab')", 'ba'),
+        ],
+        "extract_after": "def reverse_string(s):",
+    },
+    {
+        "prompt": (
+            "Write a Python function `count_vowels(s)` that returns the number of vowels (a,e,i,o,u) "
+            "in the string s (case-insensitive). Output only the function, no explanation.\n\n"
+            "def count_vowels(s):"
+        ),
+        "test_cases": [
+            ("count_vowels('hello')", 2),
+            ("count_vowels('AEIOU')", 5),
+            ("count_vowels('xyz')", 0),
+            ("count_vowels('')", 0),
+        ],
+        "extract_after": "def count_vowels(s):",
+    },
+    {
+        "prompt": (
+            "Write a Python function `fizzbuzz_single(n)` that returns 'FizzBuzz' if n is divisible "
+            "by both 3 and 5, 'Fizz' if divisible by 3, 'Buzz' if divisible by 5, "
+            "or str(n) otherwise. Output only the function, no explanation.\n\n"
+            "def fizzbuzz_single(n):"
+        ),
+        "test_cases": [
+            ("fizzbuzz_single(15)", 'FizzBuzz'),
+            ("fizzbuzz_single(3)", 'Fizz'),
+            ("fizzbuzz_single(5)", 'Buzz'),
+            ("fizzbuzz_single(7)", '7'),
+        ],
+        "extract_after": "def fizzbuzz_single(n):",
+    },
+    {
+        "prompt": (
+            "Write a Python function `abs_value(n)` that returns the absolute value of n "
+            "without using the built-in abs(). Output only the function, no explanation.\n\n"
+            "def abs_value(n):"
+        ),
+        "test_cases": [
+            ("abs_value(5)", 5),
+            ("abs_value(-5)", 5),
+            ("abs_value(0)", 0),
+        ],
+        "extract_after": "def abs_value(n):",
+    },
+    {
+        "prompt": (
+            "Write a Python function `is_palindrome(s)` that returns True if the string s "
+            "is a palindrome (case-insensitive, ignoring spaces). Output only the function.\n\n"
+            "def is_palindrome(s):"
+        ),
+        "test_cases": [
+            ("is_palindrome('racecar')", True),
+            ("is_palindrome('hello')", False),
+            ("is_palindrome('A man a plan a canal Panama'.replace(' ','').lower())", True),
+            ("is_palindrome('')", True),
+        ],
+        "extract_after": "def is_palindrome(s):",
+    },
+]
+
+HARD_ITEMS = [
     {
         "prompt": (
             "Write a Python function `flatten(lst)` that deeply flattens a nested list. "
@@ -125,7 +239,26 @@ CHALLENGES = [
         ],
         "extract_after": "def permutations(nums):",
     },
+    {
+        "prompt": (
+            "Write a Python function `binary_search(arr, target)` that returns the "
+            "index of target in a sorted array arr, or -1 if not found. "
+            "Output only the function.\n\n"
+            "def binary_search(arr, target):"
+        ),
+        "test_cases": [
+            ("binary_search([1,2,3,4,5], 3)", 2),
+            ("binary_search([1,2,3,4,5], 6)", -1),
+            ("binary_search([], 1)", -1),
+            ("binary_search([1], 1)", 0),
+            ("binary_search([1,3,5,7,9], 7)", 3),
+        ],
+        "extract_after": "def binary_search(arr, target):",
+    },
 ]
+
+# Legacy alias for backward compatibility
+CHALLENGES = EASY_ITEMS + HARD_ITEMS
 
 
 def score_code(response: str, challenge: dict) -> float:
@@ -167,12 +300,21 @@ class CodeProbe(BaseProbe):
     name = "code"
     description = "Code generation with unit test scoring — cerebellum/motor circuits"
 
-    def run(self, model) -> float:
-        scores = []
-        for challenge in CHALLENGES:
+    def run(self, model) -> dict:
+        easy_scores = []
+        for challenge in EASY_ITEMS:
             response = model.generate_short(
                 challenge["prompt"], max_new_tokens=150, temperature=0.0
             )
             score = score_code(response, challenge)
-            scores.append(score)
-        return sum(scores) / len(scores)
+            easy_scores.append(score)
+
+        hard_scores = []
+        for challenge in HARD_ITEMS:
+            response = model.generate_short(
+                challenge["prompt"], max_new_tokens=150, temperature=0.0
+            )
+            score = score_code(response, challenge)
+            hard_scores.append(score)
+
+        return self._make_result(easy_scores, hard_scores)

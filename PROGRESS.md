@@ -124,3 +124,35 @@
 [04:23] DONE: Created .env.example with placeholder API keys
 [04:24] DONE: Created pytest.ini to register custom 'api' mark
 [04:25] DONE: All 140 tests passing (81 original + 34 new non-API + 10 new API-skipped + 15 other existing), 10 skipped (API keys not set)
+[05:00] DONE: Added difficulty tiering (easy/hard) to all 10 original probes
+[05:00] DONE: Updated BaseProbe with _make_result() helper returning dict with score/easy_score/hard_score/n_easy/n_hard
+[05:00] DONE: Updated SweepRunner.run_probes() to handle dict returns (extracts float score for existing flow)
+[05:00] DONE: math probe: 8 easy (single-op) + 8 hard (multi-step, new: cube_root_27000, 17^3, sum_15_squares, LCM_12_18)
+[05:00] DONE: code probe: 8 easy (is_even, sum_list, first_element, reverse_string, count_vowels, fizzbuzz, abs_value, is_palindrome) + 8 hard (existing + binary_search)
+[05:00] DONE: eq probe: 8 easy (obvious emotions: betrayal, relief, frustration, pride, anger, gratitude, shame, joy) + 8 hard (ambiguous: guilt, jealousy, contentment, surprise, anxiety, ambivalence, conflicted, disbelief)
+[05:00] DONE: factual probe: 8 easy (well-known: gold atomic#, WW2 end, bones, continents, speed of light, chromosomes, boiling water, Fe symbol) + 8 hard (obscure: tungsten, electron mass, C14, nitrogen, Uranus moons, hydrogen ionization, topaz, gallium)
+[05:00] DONE: language probe: 8 easy (obvious errors + clear grammatical) + 8 hard (subtle: neither/nor, each/has, along with, had I known, that-that, team-are, between you and I)
+[05:00] DONE: tool_use probe: 8 easy (clear one-to-one mappings) + 8 hard (ambiguous: compressor, converter, merger, formatter + 4 new multi-plausible scenarios)
+[05:00] DONE: holistic probe: 8 easy (common analogies + teacher/patient, bark/cat) + 8 hard (non-obvious: painter/composer, fish/bird, etc. + menu/meal, cocoon/tree)
+[05:00] DONE: planning probe: 8 easy (4-step linear) + 8 hard (5-step chains: ML deploy, mobile app, aquarium + 5 new: fundraiser, vintage car, solar, documentary, product launch)
+[05:00] DONE: spatial probe: 10 easy boards (single isolated hit) + 10 hard boards (3+ hits, complex states)
+[05:00] DONE: instruction probe: 8 easy (simple 3-constraint + single-check Type B) + 8 hard (conflicting constraints + Type A/C)
+[05:00] DONE: Updated MockAdapter with responses for all new items (math, code, eq, factual, language, tool_use, holistic, planning, instruction)
+[05:00] DONE: Updated test_probes.py with _extract_score() helper for all 10 original probe tests
+[05:00] DONE: All 81 tests passing after difficulty tiering upgrade
+[05:00] DONE: Added difficulty tiering (easy/hard) to all 10 original probes
+[05:00] DONE: Updated BaseProbe with _make_result() helper returning dict with score/easy_score/hard_score/n_easy/n_hard
+[05:00] DONE: Updated SweepRunner.run_probes() to handle dict returns (extracts float score for existing flow)
+[05:00] DONE: math probe: 8 easy + 8 hard (new: cube_root_27000, 17^3, sum_15_squares, LCM_12_18)
+[05:00] DONE: code probe: 8 easy (new trivial functions) + 8 hard (existing + binary_search)
+[05:00] DONE: eq probe: 8 easy (obvious emotions) + 8 hard (ambiguous: ambivalence, conflicted, disbelief)
+[05:00] DONE: factual probe: 8 easy (well-known facts) + 8 hard (obscure facts)
+[05:00] DONE: language probe: 8 easy (obvious errors) + 8 hard (subtle violations)
+[05:00] DONE: tool_use probe: 8 easy (clear mappings) + 8 hard (ambiguous scenarios)
+[05:00] DONE: holistic probe: 8 easy (common analogies) + 8 hard (non-obvious analogies)
+[05:00] DONE: planning probe: 8 easy (4-step) + 8 hard (5-step chains)
+[05:00] DONE: spatial probe: 10 easy boards (single hit) + 10 hard boards (3+ hits)
+[05:00] DONE: instruction probe: 8 easy (simple constraints) + 8 hard (conflicting)
+[05:00] DONE: Updated MockAdapter with all new item responses
+[05:00] DONE: Updated test_probes.py with _extract_score() helper
+[05:00] DONE: All 81 tests passing after difficulty tiering upgrade

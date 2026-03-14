@@ -12,74 +12,34 @@ Maps to: Broca/Wernicke language circuits.
 
 from probes.registry import BaseProbe, register_probe
 
-SENTENCES = [
-    # --- Grammatical sentences ---
-    {
-        "sentence": "The committee has decided to postpone the meeting.",
-        "label": "grammatical",
-    },
-    {
-        "sentence": "Neither the students nor the teacher was aware of the change.",
-        "label": "grammatical",
-    },
-    {
-        "sentence": "The books that I bought yesterday are on the shelf.",
-        "label": "grammatical",
-    },
-    {
-        "sentence": "Each of the participants has submitted a report.",
-        "label": "grammatical",
-    },
-    {
-        "sentence": "The horse raced past the barn fell.",
-        "label": "grammatical",  # Garden path — reduced relative clause, actually grammatical
-    },
-    {
-        "sentence": "That that is is that that is not is not.",
-        "label": "grammatical",  # Confusing but grammatical
-    },
-    {
-        "sentence": "The manager, along with her assistants, is attending the conference.",
-        "label": "grammatical",
-    },
-    {
-        "sentence": "Had I known, I would have acted differently.",
-        "label": "grammatical",
-    },
-    # --- Ungrammatical sentences ---
-    {
-        "sentence": "The children plays in the garden every afternoon.",
-        "label": "ungrammatical",  # Subject-verb agreement
-    },
-    {
-        "sentence": "Him went to the store to buy some groceries.",
-        "label": "ungrammatical",  # Case error
-    },
-    {
-        "sentence": "She don't like the way he talks to her.",
-        "label": "ungrammatical",  # Auxiliary agreement
-    },
-    {
-        "sentence": "They was planning to leave early this morning.",
-        "label": "ungrammatical",  # Subject-verb agreement
-    },
-    {
-        "sentence": "A books are sitting on the table over there.",
-        "label": "ungrammatical",  # Determiner-noun number agreement
-    },
-    {
-        "sentence": "He goed to the market yesterday afternoon.",
-        "label": "ungrammatical",  # Irregular past tense
-    },
-    {
-        "sentence": "She is more taller than her older sister.",
-        "label": "ungrammatical",  # Double comparative
-    },
-    {
-        "sentence": "The dog that the cat that the rat bit chased died.",
-        "label": "ungrammatical",  # Center embedding overload — effectively unprocessable
-    },
+EASY_ITEMS = [
+    # --- Clear ungrammatical ---
+    {"sentence": "The children plays in the garden every afternoon.", "label": "ungrammatical"},
+    {"sentence": "Him went to the store to buy some groceries.", "label": "ungrammatical"},
+    {"sentence": "She don't like the way he talks to her.", "label": "ungrammatical"},
+    {"sentence": "They was planning to leave early this morning.", "label": "ungrammatical"},
+    {"sentence": "A books are sitting on the table over there.", "label": "ungrammatical"},
+    {"sentence": "He goed to the market yesterday afternoon.", "label": "ungrammatical"},
+    {"sentence": "She is more taller than her older sister.", "label": "ungrammatical"},
+    # --- Clear grammatical ---
+    {"sentence": "The committee has decided to postpone the meeting.", "label": "grammatical"},
 ]
+
+HARD_ITEMS = [
+    # --- Subtle grammatical sentences ---
+    {"sentence": "Neither the students nor the teacher was aware of the change.", "label": "grammatical"},
+    {"sentence": "Each of the participants has submitted a report.", "label": "grammatical"},
+    {"sentence": "The manager, along with her assistants, is attending the conference.", "label": "grammatical"},
+    {"sentence": "Had I known, I would have acted differently.", "label": "grammatical"},
+    {"sentence": "That that is is that that is not is not.", "label": "grammatical"},
+    {"sentence": "The books that I bought yesterday are on the shelf.", "label": "grammatical"},
+    # --- Subtle ungrammatical ---
+    {"sentence": "The team are going to their separate homes tonight.", "label": "grammatical"},
+    {"sentence": "Between you and I, this project is failing.", "label": "ungrammatical"},
+]
+
+# Legacy alias
+SENTENCES = EASY_ITEMS + HARD_ITEMS
 
 PROMPT_TEMPLATE = (
     'Is the following sentence grammatical or ungrammatical?\n\n'
@@ -106,11 +66,19 @@ class LanguageProbe(BaseProbe):
     name = "language"
     description = "Syntactic anomaly detection — Broca/Wernicke circuits"
 
-    def run(self, model) -> float:
-        scores = []
-        for item in SENTENCES:
+    def run(self, model) -> dict:
+        easy_scores = []
+        for item in EASY_ITEMS:
             prompt = PROMPT_TEMPLATE.format(sentence=item["sentence"])
             response = model.generate_short(prompt, max_new_tokens=5, temperature=0.0)
             score = score_language(response, item["label"])
-            scores.append(score)
-        return sum(scores) / len(scores)
+            easy_scores.append(score)
+
+        hard_scores = []
+        for item in HARD_ITEMS:
+            prompt = PROMPT_TEMPLATE.format(sentence=item["sentence"])
+            response = model.generate_short(prompt, max_new_tokens=5, temperature=0.0)
+            score = score_language(response, item["label"])
+            hard_scores.append(score)
+
+        return self._make_result(easy_scores, hard_scores)

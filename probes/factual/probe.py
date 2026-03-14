@@ -13,8 +13,51 @@ Maps to: hippocampus / factual memory circuits.
 import re
 from probes.registry import BaseProbe, register_probe
 
-QUESTIONS = [
-    # Genuinely obscure numeric facts
+EASY_ITEMS = [
+    {
+        "prompt": "What is the atomic number of gold? Answer with only the number.",
+        "answer": "79",
+        "type": "number",
+    },
+    {
+        "prompt": "In what year did World War 2 end? Answer with only the number.",
+        "answer": "1945",
+        "type": "number",
+    },
+    {
+        "prompt": "How many bones are in the adult human body? Answer with only the number.",
+        "answer": "206",
+        "type": "number",
+    },
+    {
+        "prompt": "How many continents are there on Earth? Answer with only the number.",
+        "answer": "7",
+        "type": "number",
+    },
+    {
+        "prompt": "What is the speed of light in km/s (approximate)? Answer with only the number.",
+        "answer": "299792",
+        "type": "number",
+    },
+    {
+        "prompt": "How many chromosomes do humans have? Answer with only the number.",
+        "answer": "46",
+        "type": "number",
+    },
+    {
+        "prompt": "What is the boiling point of water in degrees Celsius? Answer with only the number.",
+        "answer": "100",
+        "type": "number",
+    },
+    {
+        "prompt": "What is the chemical symbol for iron? Answer with only the symbol.",
+        "answer": "fe",
+        "type": "word",
+        "alternates": [],
+    },
+]
+
+HARD_ITEMS = [
     {
         "prompt": "What is the melting point of tungsten in degrees Celsius? Answer with only the number.",
         "answer": "3422",
@@ -55,44 +98,10 @@ QUESTIONS = [
         "answer": "1875",
         "type": "number",
     },
-    # Obscure word/name facts
-    {
-        "prompt": "What is the capital of Vanuatu? Answer with only the name (one word).",
-        "answer": "port",
-        "type": "word",
-        "alternates": ["port vila", "vila"],
-    },
-    {
-        "prompt": "What is the densest naturally occurring element? Answer with only the name (one word).",
-        "answer": "osmium",
-        "type": "word",
-        "alternates": [],
-    },
-    {
-        "prompt": "What mineral has Mohs hardness of exactly 3? Answer with only the name (one word).",
-        "answer": "calcite",
-        "type": "word",
-        "alternates": [],
-    },
-    {
-        "prompt": "What is the lightest noble gas? Answer with only the name (one word).",
-        "answer": "helium",
-        "type": "word",
-        "alternates": [],
-    },
-    {
-        "prompt": "What is the largest moon of Neptune? Answer with only the name (one word).",
-        "answer": "triton",
-        "type": "word",
-        "alternates": [],
-    },
-    {
-        "prompt": "What is the SI unit of magnetic flux? Answer with only the name (one word).",
-        "answer": "weber",
-        "type": "word",
-        "alternates": ["wb"],
-    },
 ]
+
+# Legacy alias
+QUESTIONS = EASY_ITEMS + HARD_ITEMS
 
 
 def score_factual(response: str, question: dict) -> float:
@@ -142,10 +151,17 @@ class FactualProbe(BaseProbe):
     name = "factual"
     description = "Obscure fact recall — hippocampus circuits"
 
-    def run(self, model) -> float:
-        scores = []
-        for q in QUESTIONS:
+    def run(self, model) -> dict:
+        easy_scores = []
+        for q in EASY_ITEMS:
             response = model.generate_short(q["prompt"], max_new_tokens=15, temperature=0.0)
             score = score_factual(response, q)
-            scores.append(score)
-        return sum(scores) / len(scores)
+            easy_scores.append(score)
+
+        hard_scores = []
+        for q in HARD_ITEMS:
+            response = model.generate_short(q["prompt"], max_new_tokens=15, temperature=0.0)
+            score = score_factual(response, q)
+            hard_scores.append(score)
+
+        return self._make_result(easy_scores, hard_scores)
