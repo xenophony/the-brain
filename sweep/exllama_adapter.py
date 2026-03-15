@@ -325,9 +325,13 @@ class ExLlamaV2LayerAdapter:
 
         return result
 
-    # Qwen3 chat template — /no_think disables internal reasoning mode
-    _CHAT_TEMPLATE = (
+    # Qwen3 chat templates
+    _CHAT_TEMPLATE_NO_THINK = (
         "<|im_start|>user\n{prompt} /no_think<|im_end|>\n"
+        "<|im_start|>assistant\n"
+    )
+    _CHAT_TEMPLATE_THINK = (
+        "<|im_start|>user\n{prompt}<|im_end|>\n"
         "<|im_start|>assistant\n"
     )
 
@@ -345,7 +349,7 @@ class ExLlamaV2LayerAdapter:
 
         # Wrap in chat template if not already formatted
         if "<|im_start|>" not in prompt:
-            prompt = self._CHAT_TEMPLATE.format(prompt=prompt)
+            prompt = self._CHAT_TEMPLATE_NO_THINK.format(prompt=prompt)
 
         input_ids = self._encode(prompt, add_bos=True)
         # Ensure 2D shape (batch_size=1, seq_len)
@@ -384,21 +388,28 @@ class ExLlamaV2LayerAdapter:
 
         # Decode only the newly generated token IDs (not the prompt)
         output = self._decode(generated_ids)
-        # Strip chat template artifacts from output
+        # Strip chat template artifacts
         if "<|im_end|>" in output:
             output = output.split("<|im_end|>")[0]
+        # Strip any <think>...</think> blocks that slipped through
+        import re
+        output = re.sub(r'<think>.*?</think>', '', output, flags=re.DOTALL)
+        # Take only first line (answer before any newline explanation)
+        output = output.strip().split('\n')[0]
         return output.strip()
 
     # ------------------------------------------------------------------ #
     #  Residual stream tracing interface                                    #
     # ------------------------------------------------------------------ #
 
-    def forward_with_hooks(self, prompt_or_ids, hook_fn, layer_path=None):
+    def forward_with_hooks(self, prompt_or_ids, hook_fn, layer_path=None, trace_thinking=False):
         """Run forward pass calling hook_fn(exec_pos, layer_idx, hidden) at each layer.
 
-        Cache is reset at the start (intentional — hooks are read-only so
-        cache corruption from duplicate layers is avoided by the reset,
-        matching forward_with_path's prefill behavior).
+        Args:
+            trace_thinking: If False (default), uses /no_think to trace answer
+                production only. If True, uses normal prompt to trace full
+                thinking + answer — enables research into which circuits
+                activate during Qwen3's thinking mode vs answer mode.
         """
         if layer_path is None:
             layer_path = self._layer_path or list(range(self.num_layers))
@@ -406,6 +417,12 @@ class ExLlamaV2LayerAdapter:
         from exllamav2.attn import ExLlamaV2Attention
 
         if isinstance(prompt_or_ids, str):
+            # Wrap in chat template
+            if "<|im_start|>" not in prompt_or_ids:
+                if trace_thinking:
+                    prompt_or_ids = self._CHAT_TEMPLATE_THINK.format(prompt=prompt_or_ids)
+                else:
+                    prompt_or_ids = self._CHAT_TEMPLATE_NO_THINK.format(prompt=prompt_or_ids)
             input_ids = self._encode(prompt_or_ids, add_bos=True)
         else:
             input_ids = prompt_or_ids
