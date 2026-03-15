@@ -175,6 +175,8 @@ class ExLlamaV2LayerAdapter:
 
     def _decode(self, token_ids) -> str:
         """Decode token IDs to text, compatible with both tokenizer versions."""
+        if hasattr(token_ids, 'tolist'):
+            token_ids = token_ids.tolist()
         result = self._tokenizer.decode(token_ids)
         if isinstance(result, list):
             return result[0]
