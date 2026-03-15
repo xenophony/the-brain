@@ -173,8 +173,22 @@ class ExLlamaV2LayerAdapter:
             lazy=False,
         )
 
+        # Detect GPU device from first layer module
+        self._device = torch.device("cpu")
+        first_layer = self._layer_modules[0]
+        if self._moe_mode:
+            first_module = first_layer[0]  # attention module from pair
+        else:
+            first_module = first_layer
+        try:
+            self._device = next(first_module.parameters()).device
+        except (StopIteration, AttributeError):
+            if hasattr(first_module, 'device_idx') and first_module.device_idx is not None:
+                self._device = torch.device(f"cuda:{first_module.device_idx}")
+
         print(f"Model loaded: {self.num_layers} transformer layers"
               f" ({'MoE' if self._moe_mode else 'dense'})"
+              f", device={self._device}"
               f", EOS IDs: {self._eos_token_ids}")
 
     # ------------------------------------------------------------------ #
@@ -182,12 +196,11 @@ class ExLlamaV2LayerAdapter:
     # ------------------------------------------------------------------ #
 
     def _encode(self, text: str, add_bos: bool = True) -> torch.Tensor:
-        """Encode text to token IDs. Returns shape (1, seq_len) tensor."""
-        # ExLlamaV2Tokenizer.encode(text, add_bos=False) -> Tensor(1, seq_len)
+        """Encode text to token IDs. Returns shape (1, seq_len) tensor on model device."""
         ids = self._tokenizer.encode(text, add_bos=add_bos)
         if ids.dim() == 1:
             ids = ids.unsqueeze(0)
-        return ids
+        return ids.to(self._device)
 
     def _decode(self, token_ids) -> str:
         """Decode token IDs to text. Accepts tensor or list."""
