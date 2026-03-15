@@ -8,16 +8,30 @@ rather than the default sequential 0..N-1.
 No weight copying — layers referenced multiple times in the path
 just execute twice using the same weight tensors.
 
-KV Cache Architecture:
-  When a layer appears multiple times in the path (e.g. duplication),
-  each execution position gets its own cache slot. We allocate
-  n_effective = len(layer_path) cache slots and pass the position
-  index, not the layer index, to each forward call. This prevents
-  cache corruption from overlapping writes.
+Cache note:
+  For sweep scoring (forward_with_path with use_cache=False), no KV cache
+  is used — clean stateless execution.
+  For text generation (generate_short), we use manual autoregressive
+  decoding with forward_with_path so the custom layer path is respected.
+  Each attention layer writes to its own cache slot (indexed by layer_idx),
+  so duplicated layers overwrite the same slot — acceptable for short
+  probe generations.
+
+API target: ExLlamaV2 0.3.2
+Source verified against: github.com/turboderp/exllamav2 master branch
 """
 
 from typing import Optional
 import torch
+
+
+def _to_device(tensor: torch.Tensor, device_idx) -> torch.Tensor:
+    """Move tensor to the device indicated by a module's device_idx."""
+    if device_idx is not None and device_idx >= 0:
+        target = f"cuda:{device_idx}"
+        if tensor.device != torch.device(target):
+            return tensor.to(target, non_blocking=True)
+    return tensor
 
 
 class ExLlamaV2LayerAdapter:
@@ -41,181 +55,165 @@ class ExLlamaV2LayerAdapter:
         self._layer_modules = None
         self._pre_modules = None
         self._post_modules = None
+        self._eos_token_ids: list[int] = []
         self._load()
 
     def _load(self):
-        from exllamav2 import ExLlamaV2, ExLlamaV2Config
+        from exllamav2 import ExLlamaV2, ExLlamaV2Config, ExLlamaV2Tokenizer, ExLlamaV2Cache
 
-        # ExLlamaV2 0.3.x moved/renamed several classes
-        # Cache
-        try:
-            from exllamav2.cache import ExLlamaV2Cache
-        except ImportError:
-            from exllamav2 import ExLlamaV2Cache
-
-        # Tokenizer: 0.3.x uses ExLlamaV2TokenizerHF which takes a path string
-        _use_hf_tokenizer = False
-        try:
-            from exllamav2.tokenizer import ExLlamaV2TokenizerHF
-            _use_hf_tokenizer = True
-        except ImportError:
-            from exllamav2 import ExLlamaV2Tokenizer
-
+        # ---- Config ----
         self._config = ExLlamaV2Config(self.model_path)
         self._config.arch_compat_overrides()
-        self._config.max_seq_len = self.max_seq_len  # reduce KV cache VRAM
+        self._config.max_seq_len = self.max_seq_len
 
+        # ---- Model ----
         self._model = ExLlamaV2(self._config)
         print(f"Loading model from {self.model_path} (max_seq_len={self.max_seq_len})...")
-        self._model.load()  # loads pre-quantized weights (GPTQ/EXL2/GGUF)
+        self._model.load()
 
-        # ExLlamaV2TokenizerHF takes path to tokenizer.json file
-        if _use_hf_tokenizer:
-            import os
-            tokenizer_json = os.path.join(self.model_path, "tokenizer.json")
-            self._tokenizer = ExLlamaV2TokenizerHF(tokenizer_json)
-            # Patch: ExLlamaV2StreamingGenerator expects eos_token_id attribute
-            if not hasattr(self._tokenizer, 'eos_token_id'):
-                self._tokenizer.eos_token_id = self._tokenizer.eos_token
-        else:
-            self._tokenizer = ExLlamaV2Tokenizer(self._config)
+        # ---- Tokenizer ----
+        # ExLlamaV2Tokenizer(config) is the full tokenizer:
+        #   - encode() returns torch.Tensor (batch_size, seq_len)
+        #   - decode() accepts torch.Tensor, returns str
+        #   - has eos_token_id attribute (int)
+        self._tokenizer = ExLlamaV2Tokenizer(self._config)
 
-        # Detect layer structure — supports both architectures:
-        #   Dense models: ExLlamaV2ParallelDecoder or ExLlamaV2DecoderLayer per layer
-        #   MoE models (Qwen3): ExLlamaV2Attention + ExLlamaV2MoEMLP pairs per layer
+        # Collect EOS token IDs for stop conditions
+        self._eos_token_ids = []
+        if hasattr(self._tokenizer, 'eos_token_id') and self._tokenizer.eos_token_id is not None:
+            eid = self._tokenizer.eos_token_id
+            self._eos_token_ids.append(eid if isinstance(eid, int) else int(eid))
+        # Qwen3 uses <|im_end|> and <|endoftext|> as stop tokens
+        for special in ["<|im_end|>", "<|endoftext|>"]:
+            try:
+                sid = self._tokenizer.single_id(special)
+                if sid is not None and sid not in self._eos_token_ids:
+                    self._eos_token_ids.append(sid)
+            except Exception:
+                pass
+
+        # ---- Detect layer structure ----
+        # ExLlamaV2.modules is a flat list:
+        #   [Embedding, (PosEmbedding)?, layer0_modules..., layerN_modules..., RMSNorm, Linear]
+        #
+        # Dense models:  ExLlamaV2ParallelDecoder per layer (wraps attn+mlp)
+        # MoE models:    ExLlamaV2Attention + ExLlamaV2MoEMLP per layer (separate)
         all_modules = self._model.modules
         self._moe_mode = False
+        layer_indices = []
 
-        # Try 1: ParallelDecoder (dense models, ExLlamaV2 >= 0.3.x)
+        # Strategy 1: ParallelDecoder (dense models, ExLlamaV2 >= 0.3.x)
         try:
-            from exllamav2.model import ExLlamaV2ParallelDecoder
+            from exllamav2.parallel_decoder import ExLlamaV2ParallelDecoder
             layer_indices = [i for i, m in enumerate(all_modules)
-                             if isinstance(m, ExLlamaV2ParallelDecoder)]
+                            if isinstance(m, ExLlamaV2ParallelDecoder)]
             if layer_indices:
                 self.num_layers = len(layer_indices)
                 self._pre_modules = all_modules[:layer_indices[0]]
                 self._post_modules = all_modules[layer_indices[-1] + 1:]
                 self._layer_modules = [all_modules[i] for i in layer_indices]
         except ImportError:
-            layer_indices = []
+            pass
 
-        # Try 2: DecoderLayer (dense models, older ExLlamaV2)
+        # Strategy 2: Attention + MoEMLP pairs (MoE models like Qwen3)
         if not layer_indices:
-            try:
-                from exllamav2 import ExLlamaV2DecoderLayer
-                layer_indices = [i for i, m in enumerate(all_modules)
-                                 if isinstance(m, ExLlamaV2DecoderLayer)]
-                if layer_indices:
-                    self.num_layers = len(layer_indices)
-                    self._pre_modules = all_modules[:layer_indices[0]]
-                    self._post_modules = all_modules[layer_indices[-1] + 1:]
-                    self._layer_modules = [all_modules[i] for i in layer_indices]
-            except ImportError:
-                pass
+            from exllamav2.attn import ExLlamaV2Attention
+            from exllamav2.moe_mlp import ExLlamaV2MoEMLP
 
-        # Try 3: Attention + MoEMLP pairs (MoE models like Qwen3)
-        if not layer_indices:
-            from exllamav2.model import ExLlamaV2Attention
-            try:
-                from exllamav2.model import ExLlamaV2MoEMLP
-            except ImportError:
-                from exllamav2 import ExLlamaV2MoEMLP
+            attn_indices = [i for i, m in enumerate(all_modules)
+                           if isinstance(m, ExLlamaV2Attention)]
+            mlp_indices = [i for i, m in enumerate(all_modules)
+                          if isinstance(m, ExLlamaV2MoEMLP)]
 
-            attn_modules = [m for m in all_modules if isinstance(m, ExLlamaV2Attention)]
-            mlp_modules = [m for m in all_modules if isinstance(m, ExLlamaV2MoEMLP)]
-
-            if attn_modules and len(attn_modules) == len(mlp_modules):
+            if attn_indices and len(attn_indices) == len(mlp_indices):
                 self._moe_mode = True
-                self.num_layers = len(attn_modules)
-                # layer_modules stores (attention, mlp) pairs
-                self._layer_modules = list(zip(attn_modules, mlp_modules))
+                self.num_layers = len(attn_indices)
+                self._layer_modules = [
+                    (all_modules[ai], all_modules[mi])
+                    for ai, mi in zip(attn_indices, mlp_indices)
+                ]
+                self._pre_modules = all_modules[:attn_indices[0]]
+                self._post_modules = all_modules[mlp_indices[-1] + 1:]
+                layer_indices = attn_indices  # just to mark success
 
-                # Pre-modules: everything before first attention
-                first_attn_idx = next(i for i, m in enumerate(all_modules)
-                                      if isinstance(m, ExLlamaV2Attention))
-                self._pre_modules = all_modules[:first_attn_idx]
+        # Strategy 3: Attention + MLP pairs (dense without ParallelDecoder)
+        if not layer_indices:
+            from exllamav2.attn import ExLlamaV2Attention
+            from exllamav2.mlp import ExLlamaV2MLP
 
-                # Post-modules: everything after last MLP
-                last_mlp_idx = max(i for i, m in enumerate(all_modules)
-                                   if isinstance(m, ExLlamaV2MoEMLP))
-                self._post_modules = all_modules[last_mlp_idx + 1:]
-            else:
-                raise RuntimeError(
-                    f"Could not detect layer structure. "
-                    f"Found {len(attn_modules)} Attention and {len(mlp_modules)} MoEMLP modules. "
-                    f"Module types: {[type(m).__name__ for m in all_modules[:10]]}"
-                )
+            attn_indices = [i for i, m in enumerate(all_modules)
+                           if isinstance(m, ExLlamaV2Attention)]
+            mlp_indices = [i for i, m in enumerate(all_modules)
+                          if isinstance(m, ExLlamaV2MLP)]
 
-        # Allocate default cache for standard path
+            if attn_indices and len(attn_indices) == len(mlp_indices):
+                self.num_layers = len(attn_indices)
+                self._layer_modules = [
+                    (all_modules[ai], all_modules[mi])
+                    for ai, mi in zip(attn_indices, mlp_indices)
+                ]
+                self._pre_modules = all_modules[:attn_indices[0]]
+                self._post_modules = all_modules[mlp_indices[-1] + 1:]
+                self._moe_mode = True  # same execution pattern as MoE (attn, mlp pair)
+                layer_indices = attn_indices
+
+        if not layer_indices:
+            raise RuntimeError(
+                f"Could not detect layer structure. "
+                f"Module types: {[type(m).__name__ for m in all_modules]}"
+            )
+
+        # ---- Cache ----
+        # ExLlamaV2Cache(model, batch_size=1, max_seq_len=-1, lazy=False)
+        # max_seq_len=-1 uses model config default
         self._cache = ExLlamaV2Cache(
             self._model,
+            batch_size=1,
             max_seq_len=self.cache_size_tokens,
-            lazy=False
+            lazy=False,
         )
-        # Ensure cache is initialized (0.3.2 may leave current_seq_len as None)
-        if self._cache.current_seq_len is None:
-            self._cache.current_seq_len = 0
-
-        # Store model device for tensor creation
-        self._device = torch.device(f"cuda:{self._pre_modules[0].device_idx}"
-                                     if self._pre_modules[0].device_idx is not None
-                                     and self._pre_modules[0].device_idx >= 0
-                                     else "cpu")
 
         print(f"Model loaded: {self.num_layers} transformer layers"
-              f" ({'MoE' if self._moe_mode else 'dense'})")
+              f" ({'MoE' if self._moe_mode else 'dense'})"
+              f", EOS IDs: {self._eos_token_ids}")
+
+    # ------------------------------------------------------------------ #
+    #  Encode / Decode                                                     #
+    # ------------------------------------------------------------------ #
 
     def _encode(self, text: str, add_bos: bool = True) -> torch.Tensor:
-        """Encode text to token IDs, compatible with both tokenizer versions."""
-        try:
-            return self._tokenizer.encode(text, add_bos=add_bos)
-        except TypeError:
-            # ExLlamaV2TokenizerHF doesn't accept add_bos — HF tokenizer handles it
-            ids = self._tokenizer.encode(text)
-            if isinstance(ids, list):
-                ids = torch.tensor([ids], dtype=torch.long)
-            return ids
+        """Encode text to token IDs. Returns shape (1, seq_len) tensor."""
+        # ExLlamaV2Tokenizer.encode(text, add_bos=False) -> Tensor(1, seq_len)
+        ids = self._tokenizer.encode(text, add_bos=add_bos)
+        if ids.dim() == 1:
+            ids = ids.unsqueeze(0)
+        return ids
 
     def _decode(self, token_ids) -> str:
-        """Decode token IDs to text. ExLlamaV2TokenizerHF expects List[int]."""
-        if hasattr(token_ids, 'tolist'):
-            token_ids = token_ids.tolist()
-        # Flatten nested list [[1,2,3]] -> [1,2,3]
-        if isinstance(token_ids, list) and len(token_ids) > 0:
-            if isinstance(token_ids[0], list):
-                token_ids = token_ids[0]
-        # Ensure flat list of ints
-        token_ids = [int(t) for t in token_ids]
+        """Decode token IDs to text. Accepts tensor or list."""
+        if isinstance(token_ids, list):
+            token_ids = torch.tensor([token_ids], dtype=torch.long)
+        elif token_ids.dim() == 1:
+            token_ids = token_ids.unsqueeze(0)
+        # ExLlamaV2Tokenizer.decode(tensor) -> str
         return self._tokenizer.decode(token_ids)
+
+    # ------------------------------------------------------------------ #
+    #  Layer path control                                                  #
+    # ------------------------------------------------------------------ #
 
     def set_layer_path(self, path: list[int]):
         """Set the layer execution order for subsequent forward passes."""
         self._layer_path = path
 
-    def _make_path_cache(self, layer_path: list[int]):
-        """
-        Create a cache sized for the effective path length.
+    # ------------------------------------------------------------------ #
+    #  Core forward pass                                                   #
+    # ------------------------------------------------------------------ #
 
-        BLOCKER 1 fix: When layers repeat in the path, each execution
-        position needs its own KV cache slot. We create a cache with
-        n_effective layers and remap layer -> position during execution.
-        """
-        try:
-            from exllamav2.cache import ExLlamaV2Cache
-        except ImportError:
-            from exllamav2 import ExLlamaV2Cache
-
-        n_effective = len(layer_path)
-        if n_effective == self.num_layers:
-            # Standard path — use the pre-allocated cache
-            return self._cache
-
-        # For non-standard paths, we need a cache that matches
-        # the effective depth. ExLlamaV2Cache is sized by model config,
-        # so we create a temporary oversized cache and manage slots manually.
-        # The cache's layer count comes from the model, but we track
-        # position ourselves in forward_with_path.
-        return self._cache
+    def _run_module(self, module, x, cache, attn_params, past_len):
+        """Run a single module's forward pass with device transfer."""
+        x = _to_device(x, module.device_idx)
+        return module.forward(x, cache=cache, attn_params=attn_params, past_len=past_len)
 
     def forward_with_path(
         self,
@@ -228,9 +226,10 @@ class ExLlamaV2LayerAdapter:
         Run a forward pass using an explicit layer execution path.
 
         Mirrors ExLlamaV2.forward_chunk() from the actual source:
-        - Creates ExLlamaV2Attention.Params(batch_size, seq_len, past_len, None, None)
-        - Calls module.forward(x, cache=cache, attn_params=attn_params, past_len=past_len)
+        - Creates Params(batch_size, seq_len, past_len, input_mask, position_offsets)
+        - Calls module.forward(hidden_states, cache=cache, attn_params=params, past_len=past_len)
         - Moves tensors to correct device via module.device_idx
+        - Advances cache.current_seq_len after all modules
 
         Args:
             use_cache: False (sweep/tracing) = no KV cache, clean execution.
@@ -246,87 +245,39 @@ class ExLlamaV2LayerAdapter:
         p_len = past_len if use_cache else 0
         batch_size, seq_len = input_ids.shape
 
-        # Create attn_params exactly as model.forward_chunk does
-        attn_params = ExLlamaV2Attention.Params(
-            batch_size, seq_len, p_len, None, None
-        )
+        # Params signature: (batch_size, seq_len, past_len, input_mask, position_offsets)
+        attn_params = ExLlamaV2Attention.Params(batch_size, seq_len, p_len)
 
-        # Move input_ids to model device
-        device = self._pre_modules[0].device_idx
-        if device is not None and device >= 0:
-            input_ids = input_ids.to(f"cuda:{device}")
+        # Move input_ids to embedding device
+        x = _to_device(input_ids, self._pre_modules[0].device_idx)
 
-        # Embedding (pre-layer modules)
-        x = input_ids
+        # Pre-layer modules (embedding, optional pos embedding)
         for module in self._pre_modules:
-            x = module.forward(x, cache=cache, attn_params=attn_params, past_len=p_len)
+            x = self._run_module(module, x, cache, attn_params, p_len)
 
-        # Layers in custom order — move tensor between devices as needed
+        # Transformer layers in custom order
         for layer_idx in layer_path:
             layer = self._layer_modules[layer_idx]
             if self._moe_mode:
                 attn, mlp = layer
-                # Move to attention device
-                d = attn.device_idx
-                if d is not None and d >= 0:
-                    x = x.to(f"cuda:{d}", non_blocking=True)
-                x = attn.forward(x, cache=cache, attn_params=attn_params, past_len=p_len)
-                # Move to MLP device
-                d = mlp.device_idx
-                if d is not None and d >= 0:
-                    x = x.to(f"cuda:{d}", non_blocking=True)
-                x = mlp.forward(x, cache=cache, attn_params=attn_params, past_len=p_len)
+                x = self._run_module(attn, x, cache, attn_params, p_len)
+                x = self._run_module(mlp, x, cache, attn_params, p_len)
             else:
-                d = layer.device_idx
-                if d is not None and d >= 0:
-                    x = x.to(f"cuda:{d}", non_blocking=True)
-                x = layer.forward(x, cache=cache, attn_params=attn_params, past_len=p_len)
+                x = self._run_module(layer, x, cache, attn_params, p_len)
 
-        # Update cache position
-        if use_cache:
-            self._cache.current_seq_len = p_len + seq_len
-
-        # Post modules (norm + lm_head)
+        # Post-layer modules (final norm + lm_head)
         for module in self._post_modules:
-            d = getattr(module, 'device_idx', None)
-            if d is not None and d >= 0:
-                x = x.to(f"cuda:{d}", non_blocking=True)
-            x = module.forward(x, cache=cache, attn_params=attn_params, past_len=p_len)
+            x = self._run_module(module, x, cache, attn_params, p_len)
 
-        return x  # logits
+        # Advance cache position (mirrors forward_chunk: cache.current_seq_len += seq_len)
+        if use_cache:
+            self._cache.current_seq_len += seq_len
 
-    def get_logprobs(
-        self,
-        prompt: str,
-        target_tokens: Optional[list[str]] = None
-    ) -> dict[str, float]:
-        """
-        Get log probabilities for specific tokens at the final position.
-        Used by probes that need logit distributions.
-        """
-        input_ids = self._encode(prompt, add_bos=True)
-        if input_ids.dim() == 1:
-            input_ids = input_ids.unsqueeze(0)
+        return x  # logits: (batch_size, seq_len, vocab_size)
 
-        layer_path = self._layer_path or list(range(self.num_layers))
-        logits = self.forward_with_path(input_ids, layer_path, use_cache=False)
-
-        # Last token logits
-        last_logits = logits[0, -1, :]
-        log_probs = torch.log_softmax(last_logits, dim=-1)
-
-        if target_tokens is None:
-            return {"raw_logits": last_logits}
-
-        result = {}
-        for token_str in target_tokens:
-            token_ids = self._encode(token_str, add_bos=False)
-            if token_ids.shape[-1] >= 1:
-                result[token_str] = log_probs[token_ids[0, 0]].item()
-            else:
-                result[token_str] = float('-inf')
-
-        return result
+    # ------------------------------------------------------------------ #
+    #  Text generation (respects custom layer path)                        #
+    # ------------------------------------------------------------------ #
 
     # Qwen3 chat templates
     _CHAT_TEMPLATE_NO_THINK = (
@@ -342,44 +293,63 @@ class ExLlamaV2LayerAdapter:
         self,
         prompt: str,
         max_new_tokens: int = 20,
-        temperature: float = 0.0
+        temperature: float = 0.0,
     ) -> str:
         """
-        Generate a short completion using ExLlamaV2StreamingGenerator.
-        Used for probe scoring — not for circuit analysis.
+        Generate a short completion using manual autoregressive decoding
+        with forward_with_path(), so the custom layer path is respected.
+
+        O(n * max_new_tokens) where n = prompt length. Acceptable for
+        probe scoring with short prompts and <=20 output tokens.
         """
         import re
-        from exllamav2.generator import ExLlamaV2StreamingGenerator, ExLlamaV2Sampler
 
         # Wrap in chat template if not already formatted
         if "<|im_start|>" not in prompt:
             prompt = self._CHAT_TEMPLATE_NO_THINK.format(prompt=prompt)
 
-        generator = ExLlamaV2StreamingGenerator(
-            self._model, self._cache, self._tokenizer
-        )
+        input_ids = self._encode(prompt, add_bos=True)  # (1, seq_len)
+        layer_path = self._layer_path or list(range(self.num_layers))
+        prompt_len = input_ids.shape[1]
 
-        settings = ExLlamaV2Sampler.Settings()
-        settings.temperature = temperature
-        settings.top_k = 1 if temperature == 0.0 else 50
+        generated_ids = []
 
-        generator.set_stop_conditions([
-            self._tokenizer.eos_token_id,
-            "<|im_end|>",
-        ])
+        for step in range(max_new_tokens):
+            with torch.inference_mode():
+                # Full re-forward each step (no cache — avoids slot collision
+                # with duplicated layers)
+                logits = self.forward_with_path(
+                    input_ids, layer_path, use_cache=False
+                )
 
-        # begin_stream_ex takes input_ids tensor, not string
-        input_ids = self._encode(prompt, add_bos=True)
-        if input_ids.dim() == 1:
-            input_ids = input_ids.unsqueeze(0)
-        generator.begin_stream_ex(input_ids, settings)
+            # Sample from last position
+            next_logits = logits[0, -1, :].float()
 
-        output = ""
-        for _ in range(max_new_tokens):
-            result = generator.stream_ex()
-            output += result["chunk"]
-            if result["eos"]:
+            if temperature <= 0.0 or temperature < 1e-7:
+                next_id = next_logits.argmax().item()
+            else:
+                probs = torch.softmax(next_logits / temperature, dim=-1)
+                next_id = torch.multinomial(probs, 1).item()
+
+            # Check stop conditions
+            if next_id in self._eos_token_ids:
                 break
+
+            generated_ids.append(next_id)
+            # Append token and continue
+            next_tensor = torch.tensor([[next_id]], dtype=torch.long, device=input_ids.device)
+            input_ids = torch.cat([input_ids, next_tensor], dim=1)
+
+            # Check string stop conditions
+            partial = self._decode(generated_ids)
+            if "<|im_end|>" in partial:
+                break
+
+        # Decode only the generated tokens
+        if not generated_ids:
+            return ""
+
+        output = self._decode(generated_ids)
 
         # Clean output
         if "<|im_end|>" in output:
@@ -389,17 +359,56 @@ class ExLlamaV2LayerAdapter:
         return output.strip()
 
     # ------------------------------------------------------------------ #
-    #  Residual stream tracing interface                                    #
+    #  Logprob interface                                                   #
+    # ------------------------------------------------------------------ #
+
+    def get_logprobs(
+        self,
+        prompt: str,
+        target_tokens: Optional[list[str]] = None,
+    ) -> dict[str, float]:
+        """
+        Get log probabilities for specific tokens at the final position.
+        Used by probes that need logit distributions.
+        """
+        input_ids = self._encode(prompt, add_bos=True)
+        layer_path = self._layer_path or list(range(self.num_layers))
+
+        with torch.inference_mode():
+            logits = self.forward_with_path(input_ids, layer_path, use_cache=False)
+
+        last_logits = logits[0, -1, :].float()
+        log_probs = torch.log_softmax(last_logits, dim=-1)
+
+        if target_tokens is None:
+            return {"raw_logits": last_logits}
+
+        result = {}
+        for token_str in target_tokens:
+            token_ids = self._encode(token_str, add_bos=False)
+            if token_ids.shape[-1] >= 1:
+                tid = token_ids[0, 0].item()
+                result[token_str] = log_probs[tid].item()
+            else:
+                result[token_str] = float('-inf')
+
+        return result
+
+    # ------------------------------------------------------------------ #
+    #  Residual stream tracing interface                                   #
     # ------------------------------------------------------------------ #
 
     def forward_with_hooks(self, prompt_or_ids, hook_fn, layer_path=None, trace_thinking=False):
         """Run forward pass calling hook_fn(exec_pos, layer_idx, hidden) at each layer.
 
         Args:
+            prompt_or_ids: Text string or (1, seq_len) token ID tensor.
+            hook_fn: Called as hook_fn(exec_position, layer_index, hidden_state_clone).
+                     exec_position=-1 for the post-embedding state.
+            layer_path: Override layer path. Defaults to self._layer_path or [0..N-1].
             trace_thinking: If False (default), uses /no_think to trace answer
                 production only. If True, uses normal prompt to trace full
-                thinking + answer — enables research into which circuits
-                activate during Qwen3's thinking mode vs answer mode.
+                thinking + answer.
         """
         if layer_path is None:
             layer_path = self._layer_path or list(range(self.num_layers))
@@ -407,30 +416,25 @@ class ExLlamaV2LayerAdapter:
         from exllamav2.attn import ExLlamaV2Attention
 
         if isinstance(prompt_or_ids, str):
-            # Wrap in chat template
             if "<|im_start|>" not in prompt_or_ids:
-                if trace_thinking:
-                    prompt_or_ids = self._CHAT_TEMPLATE_THINK.format(prompt=prompt_or_ids)
-                else:
-                    prompt_or_ids = self._CHAT_TEMPLATE_NO_THINK.format(prompt=prompt_or_ids)
+                template = self._CHAT_TEMPLATE_THINK if trace_thinking else self._CHAT_TEMPLATE_NO_THINK
+                prompt_or_ids = template.format(prompt=prompt_or_ids)
             input_ids = self._encode(prompt_or_ids, add_bos=True)
         else:
             input_ids = prompt_or_ids
 
-        batch_size, seq_len = input_ids.shape
-        attn_params = ExLlamaV2Attention.Params(batch_size, seq_len, 0, None, None)
+        if input_ids.dim() == 1:
+            input_ids = input_ids.unsqueeze(0)
 
-        # Move to model device
-        device = self._pre_modules[0].device_idx
-        if device is not None and device >= 0:
-            input_ids = input_ids.to(f"cuda:{device}")
+        batch_size, seq_len = input_ids.shape
+        attn_params = ExLlamaV2Attention.Params(batch_size, seq_len, 0)
 
         # Embedding
-        x = input_ids
+        x = _to_device(input_ids, self._pre_modules[0].device_idx)
         for module in self._pre_modules:
-            x = module.forward(x, cache=None, attn_params=attn_params, past_len=0)
+            x = self._run_module(module, x, None, attn_params, 0)
 
-        # Pre-layer-0 hook: embedding state
+        # Post-embedding hook
         if hook_fn:
             hook_fn(-1, -1, x.detach().clone())
 
@@ -439,58 +443,52 @@ class ExLlamaV2LayerAdapter:
             layer = self._layer_modules[layer_idx]
             if self._moe_mode:
                 attn, mlp = layer
-                d = attn.device_idx
-                if d is not None and d >= 0:
-                    x = x.to(f"cuda:{d}", non_blocking=True)
-                x = attn.forward(x, cache=None, attn_params=attn_params, past_len=0)
-                d = mlp.device_idx
-                if d is not None and d >= 0:
-                    x = x.to(f"cuda:{d}", non_blocking=True)
-                x = mlp.forward(x, cache=None, attn_params=attn_params, past_len=0)
+                x = self._run_module(attn, x, None, attn_params, 0)
+                x = self._run_module(mlp, x, None, attn_params, 0)
             else:
-                d = layer.device_idx
-                if d is not None and d >= 0:
-                    x = x.to(f"cuda:{d}", non_blocking=True)
-                x = layer.forward(x, cache=None, attn_params=attn_params, past_len=0)
+                x = self._run_module(layer, x, None, attn_params, 0)
             if hook_fn:
                 hook_fn(k, layer_idx, x.detach().clone())
 
         return x
 
     def project_to_vocab(self, hidden_state, target_token_ids=None):
-        """Project hidden state to vocabulary probability distribution."""
+        """Project hidden state through final norm + lm_head to vocabulary logits."""
         from exllamav2.attn import ExLlamaV2Attention
-        batch_size = hidden_state.shape[0] if hidden_state.dim() >= 2 else 1
-        seq_len = hidden_state.shape[-2] if hidden_state.dim() >= 2 else 1
-        attn_params = ExLlamaV2Attention.Params(batch_size, seq_len, 0, None, None)
+
+        if hidden_state.dim() == 2:
+            hidden_state = hidden_state.unsqueeze(0)
+
+        batch_size, seq_len = hidden_state.shape[0], hidden_state.shape[1]
+        attn_params = ExLlamaV2Attention.Params(batch_size, seq_len, 0)
 
         h = hidden_state
         for module in self._post_modules:
-            d = getattr(module, 'device_idx', None)
-            if d is not None and d >= 0:
-                h = h.to(f"cuda:{d}", non_blocking=True)
-            h = module.forward(h, cache=None, attn_params=attn_params, past_len=0)
+            h = self._run_module(module, h, None, attn_params, 0)
 
-        # Convert to probabilities
-        logits = h[0, -1, :] if h.dim() == 3 else h[-1, :]
+        logits = h[0, -1, :].float()
         probs = torch.softmax(logits, dim=-1)
 
         if target_token_ids is not None:
             return {tid: probs[tid].item() for tid in target_token_ids if tid < len(probs)}
-        # Full distribution for entropy computation
         return {i: probs[i].item() for i in range(len(probs))}
+
+    # ------------------------------------------------------------------ #
+    #  Token utilities                                                     #
+    # ------------------------------------------------------------------ #
 
     def tokens_to_ids(self, token_strings):
         """Convert token strings to token IDs."""
-        if isinstance(token_strings, list):
-            ids = []
-            for s in token_strings:
-                encoded = self._encode(s, add_bos=False)
-                if encoded.shape[-1] >= 1:
-                    ids.append(encoded[0, 0].item())
-            return ids
-        encoded = self._encode(token_strings, add_bos=False)
-        return [encoded[0, 0].item()] if encoded.shape[-1] >= 1 else []
+        if isinstance(token_strings, str):
+            token_strings = [token_strings]
+        ids = []
+        for s in token_strings:
+            encoded = self._encode(s, add_bos=False)
+            if encoded.shape[-1] >= 1:
+                ids.append(encoded[0, 0].item())
+        return ids
 
     def tokenize(self, text: str) -> list[int]:
-        return self._encode(text, add_bos=True).tolist()[0]
+        """Tokenize text, returning flat list of token IDs (with BOS)."""
+        ids = self._encode(text, add_bos=True)
+        return ids[0].tolist()
