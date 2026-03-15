@@ -82,9 +82,11 @@ class ExLlamaV2LayerAdapter:
         print(f"Loading model from {self.model_path} (max_seq_len={self.max_seq_len})...")
         self._model.load()  # loads pre-quantized weights (GPTQ/EXL2/GGUF)
 
-        # ExLlamaV2TokenizerHF takes path string; old ExLlamaV2Tokenizer takes config
+        # ExLlamaV2TokenizerHF takes path to tokenizer.json file
         if _use_hf_tokenizer:
-            self._tokenizer = ExLlamaV2TokenizerHF(self.model_path)
+            import os
+            tokenizer_json = os.path.join(self.model_path, "tokenizer.json")
+            self._tokenizer = ExLlamaV2TokenizerHF(tokenizer_json)
         else:
             self._tokenizer = ExLlamaV2Tokenizer(self._config)
 
