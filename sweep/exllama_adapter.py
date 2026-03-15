@@ -156,11 +156,11 @@ class ExLlamaV2LayerAdapter:
     # ------------------------------------------------------------------ #
 
     def _encode(self, text: str, add_bos: bool = True) -> torch.Tensor:
-        """Encode text → (1, seq_len) tensor on GPU."""
+        """Encode text → (1, seq_len) tensor. Stays on CPU — _run_module moves per module."""
         ids = self._tokenizer.encode(text, add_bos=add_bos)
         if ids.dim() == 1:
             ids = ids.unsqueeze(0)
-        return ids.to(self._device)
+        return ids
 
     def _decode(self, token_ids) -> str:
         """Decode token IDs → string. Moves to CPU for tokenizer."""
@@ -179,12 +179,15 @@ class ExLlamaV2LayerAdapter:
     # ------------------------------------------------------------------ #
 
     def _run_module(self, module, x, cache, attn_params, past_len):
-        """Run one module, moving x to module's device first."""
+        """Run one module, moving x to module's device first.
+        Handles GPU modules (device_idx >= 0) and CPU modules (device_idx None/-1)."""
         d = getattr(module, 'device_idx', None)
         if d is not None and d >= 0:
             target = torch.device(f"cuda:{d}")
-            if x.device != target:
-                x = x.to(target, non_blocking=True)
+        else:
+            target = torch.device("cpu")
+        if x.device != target:
+            x = x.to(target, non_blocking=True)
         return module.forward(x, cache=cache, attn_params=attn_params, past_len=past_len)
 
     def forward_with_path(
@@ -193,10 +196,6 @@ class ExLlamaV2LayerAdapter:
     ) -> torch.Tensor:
         """Forward pass with custom layer path. input_ids must be on GPU."""
         from exllamav2.attn import ExLlamaV2Attention
-
-        # Ensure input is on GPU
-        if input_ids.device != self._device:
-            input_ids = input_ids.to(self._device)
 
         cache = self._cache if use_cache else None
         if use_cache and past_len == 0:
@@ -276,9 +275,9 @@ class ExLlamaV2LayerAdapter:
 
                 generated_ids.append(next_id)
 
-                # Single-token decode — tensor on GPU
-                next_tensor = torch.tensor([[next_id]], dtype=torch.long,
-                                           device=self._device)
+                # Single-token decode — starts on CPU, _run_module moves per module
+                next_tensor = torch.tensor([[next_id]], dtype=torch.long)
+
                 logits = self.forward_with_path(next_tensor, layer_path,
                                                 use_cache=True,
                                                 past_len=current_past_len)
@@ -348,7 +347,7 @@ class ExLlamaV2LayerAdapter:
                 prompt_or_ids = tmpl.format(prompt=prompt_or_ids)
             input_ids = self._encode(prompt_or_ids, add_bos=True)  # GPU
         else:
-            input_ids = prompt_or_ids.to(self._device)  # Ensure GPU
+            input_ids = prompt_or_ids
 
         if input_ids.dim() == 1:
             input_ids = input_ids.unsqueeze(0)
@@ -380,7 +379,7 @@ class ExLlamaV2LayerAdapter:
         """Project hidden state through norm + lm_head → vocab probs."""
         from exllamav2.attn import ExLlamaV2Attention
 
-        h = hidden_state.to(self._device)  # Ensure GPU
+        h = hidden_state
         if h.dim() == 2:
             h = h.unsqueeze(0)
 
