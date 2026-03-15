@@ -74,6 +74,9 @@ class ExLlamaV2LayerAdapter:
             import os
             tokenizer_json = os.path.join(self.model_path, "tokenizer.json")
             self._tokenizer = ExLlamaV2TokenizerHF(tokenizer_json)
+            # Patch: ExLlamaV2StreamingGenerator expects eos_token_id attribute
+            if not hasattr(self._tokenizer, 'eos_token_id'):
+                self._tokenizer.eos_token_id = self._tokenizer.eos_token
         else:
             self._tokenizer = ExLlamaV2Tokenizer(self._config)
 
