@@ -30,9 +30,10 @@ class ExLlamaV2LayerAdapter:
         output = adapter.generate_short("prompt")
     """
 
-    def __init__(self, model_path: str, cache_size_tokens: int = 2048):
+    def __init__(self, model_path: str, cache_size_tokens: int = 2048, max_seq_len: int = 2048):
         self.model_path = model_path
         self.cache_size_tokens = cache_size_tokens
+        self.max_seq_len = max_seq_len
         self._layer_path: Optional[list[int]] = None
         self._model = None
         self._tokenizer = None
@@ -73,9 +74,11 @@ class ExLlamaV2LayerAdapter:
 
         self._config = ExLlamaV2Config(self.model_path)
         self._config.arch_compat_overrides()
+        self._config.max_seq_len = self.max_seq_len  # reduce KV cache VRAM
 
         self._model = ExLlamaV2(self._config)
-        self._model.load(lazy=False)
+        print(f"Loading model from {self.model_path} (max_seq_len={self.max_seq_len})...")
+        self._model.load()  # loads pre-quantized weights (GPTQ/EXL2/GGUF)
 
         self._tokenizer = _TokenizerClass(self._config)
 

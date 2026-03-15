@@ -356,3 +356,6 @@
 [00:45] DONE: Fixed ExLlamaV2Tokenizer -> ExLlamaV2TokenizerHF (from exllamav2.tokenizer)
 [00:45] DONE: Fixed ExLlamaV2Cache import (from exllamav2.cache)
 [00:45] DONE: All imports now have version-compatible fallbacks for both 0.2.x and 0.3.x
+[01:00] DONE: Added max_seq_len parameter to ExLlamaV2LayerAdapter (default 2048, reduces KV cache VRAM)
+[01:00] DONE: Changed model.load(lazy=False) to model.load() — loads pre-quantized weights
+[01:00] NOTE: Model must be in pre-quantized format (GPTQ/EXL2). Use quantized Qwen3-30B-A3B for 32GB VRAM.
