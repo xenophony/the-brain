@@ -296,11 +296,12 @@ class ExLlamaV2LayerAdapter:
         temperature: float = 0.0,
     ) -> str:
         """
-        Generate a short completion using manual autoregressive decoding
+        Generate a short completion using KV-cached autoregressive decoding
         with forward_with_path(), so the custom layer path is respected.
 
-        O(n * max_new_tokens) where n = prompt length. Acceptable for
-        probe scoring with short prompts and <=20 output tokens.
+        Uses use_cache=True for O(n) generation (not O(n²)).
+        KV cache contamination from duplicate layers is acceptable for
+        probe scoring — it only affects sweep circuit analysis.
         """
         import re
 
@@ -310,40 +311,46 @@ class ExLlamaV2LayerAdapter:
 
         input_ids = self._encode(prompt, add_bos=True)  # (1, seq_len)
         layer_path = self._layer_path or list(range(self.num_layers))
-        prompt_len = input_ids.shape[1]
 
         generated_ids = []
 
-        for step in range(max_new_tokens):
-            with torch.inference_mode():
-                # Full re-forward each step (no cache — avoids slot collision
-                # with duplicated layers)
+        with torch.inference_mode():
+            # Prefill: process full prompt, past_len=0 resets cache
+            logits = self.forward_with_path(
+                input_ids, layer_path, use_cache=True, past_len=0
+            )
+            current_past_len = input_ids.shape[1]
+
+            for step in range(max_new_tokens):
+                # Sample from last position
+                next_logits = logits[0, -1, :].float()
+
+                if temperature <= 0.0 or temperature < 1e-7:
+                    next_id = next_logits.argmax().item()
+                else:
+                    probs = torch.softmax(next_logits / temperature, dim=-1)
+                    next_id = torch.multinomial(probs, 1).item()
+
+                # Check stop conditions
+                if next_id in self._eos_token_ids:
+                    break
+
+                generated_ids.append(next_id)
+
+                # Decode step: single token, KV cached
+                next_tensor = torch.tensor([[next_id]], dtype=torch.long,
+                                           device=input_ids.device)
                 logits = self.forward_with_path(
-                    input_ids, layer_path, use_cache=False
+                    next_tensor, layer_path, use_cache=True, past_len=current_past_len
                 )
+                current_past_len += 1
 
-            # Sample from last position
-            next_logits = logits[0, -1, :].float()
-
-            if temperature <= 0.0 or temperature < 1e-7:
-                next_id = next_logits.argmax().item()
-            else:
-                probs = torch.softmax(next_logits / temperature, dim=-1)
-                next_id = torch.multinomial(probs, 1).item()
-
-            # Check stop conditions
-            if next_id in self._eos_token_ids:
-                break
-
-            generated_ids.append(next_id)
-            # Append token and continue
-            next_tensor = torch.tensor([[next_id]], dtype=torch.long, device=input_ids.device)
-            input_ids = torch.cat([input_ids, next_tensor], dim=1)
-
-            # Check string stop conditions
-            partial = self._decode(generated_ids)
-            if "<|im_end|>" in partial:
-                break
+                # Check string stop conditions
+                partial = self._decode(generated_ids)
+                if isinstance(partial, list):
+                    partial = ''.join(partial)
+                if "<|im_end|>" in partial:
+                    break
 
         # Decode only the generated tokens
         if not generated_ids:
