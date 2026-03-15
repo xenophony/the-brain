@@ -53,11 +53,13 @@ class ExLlamaV2LayerAdapter:
         except ImportError:
             from exllamav2 import ExLlamaV2Cache
 
-        # Tokenizer: 0.3.x uses ExLlamaV2TokenizerHF
+        # Tokenizer: 0.3.x uses ExLlamaV2TokenizerHF which takes a path string
+        _use_hf_tokenizer = False
         try:
-            from exllamav2.tokenizer import ExLlamaV2TokenizerHF as _TokenizerClass
+            from exllamav2.tokenizer import ExLlamaV2TokenizerHF
+            _use_hf_tokenizer = True
         except ImportError:
-            from exllamav2 import ExLlamaV2Tokenizer as _TokenizerClass
+            from exllamav2 import ExLlamaV2Tokenizer
 
         # Layer class: 0.3.x uses ExLlamaV2ParallelDecoder
         try:
@@ -80,7 +82,11 @@ class ExLlamaV2LayerAdapter:
         print(f"Loading model from {self.model_path} (max_seq_len={self.max_seq_len})...")
         self._model.load()  # loads pre-quantized weights (GPTQ/EXL2/GGUF)
 
-        self._tokenizer = _TokenizerClass(self._config)
+        # ExLlamaV2TokenizerHF takes path string; old ExLlamaV2Tokenizer takes config
+        if _use_hf_tokenizer:
+            self._tokenizer = ExLlamaV2TokenizerHF(self.model_path)
+        else:
+            self._tokenizer = ExLlamaV2Tokenizer(self._config)
 
         # Detect layer modules dynamically — works with both old and new ExLlamaV2 versions
         all_modules = self._model.modules
