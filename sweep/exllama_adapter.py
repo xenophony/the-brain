@@ -376,8 +376,8 @@ class ExLlamaV2LayerAdapter:
         if not generated_ids:
             return ""
 
-        output_ids = torch.tensor([generated_ids], dtype=torch.long)
-        return self._decode(output_ids)
+        # Decode only the newly generated token IDs (not the prompt)
+        return self._decode(generated_ids)
 
     # ------------------------------------------------------------------ #
     #  Residual stream tracing interface                                    #
