@@ -346,7 +346,6 @@ class ExLlamaV2LayerAdapter:
     ) -> str:
         """
         Generate a short completion using ExLlamaV2StreamingGenerator.
-        Handles cache management and decoding correctly.
         Used for probe scoring — not for circuit analysis.
         """
         import re
@@ -365,17 +364,21 @@ class ExLlamaV2LayerAdapter:
         settings.top_k = 1 if temperature == 0.0 else 50
 
         generator.set_stop_conditions([
-            self._tokenizer.eos_token,
+            self._tokenizer.eos_token_id,
             "<|im_end|>",
         ])
 
-        generator.begin_stream_ex(prompt, settings)
+        # begin_stream_ex takes input_ids tensor, not string
+        input_ids = self._encode(prompt, add_bos=True)
+        if input_ids.dim() == 1:
+            input_ids = input_ids.unsqueeze(0)
+        generator.begin_stream_ex(input_ids, settings)
 
         output = ""
         for _ in range(max_new_tokens):
-            chunk, eos, _ = generator.stream_ex()
-            output += chunk
-            if eos:
+            result = generator.stream_ex()
+            output += result["chunk"]
+            if result["eos"]:
                 break
 
         # Clean output
