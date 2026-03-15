@@ -149,8 +149,12 @@ class ExLlamaV2LayerAdapter:
             max_seq_len=self.cache_size_tokens,
             lazy=False
         )
+        # Ensure cache is initialized (0.3.2 may leave current_seq_len as None)
+        if self._cache.current_seq_len is None:
+            self._cache.current_seq_len = 0
 
-        print(f"Model loaded: {self.num_layers} transformer layers")
+        print(f"Model loaded: {self.num_layers} transformer layers"
+              f" ({'MoE' if self._moe_mode else 'dense'})")
 
     def _encode(self, text: str, add_bos: bool = True) -> torch.Tensor:
         """Encode text to token IDs, compatible with both tokenizer versions."""
@@ -220,6 +224,8 @@ class ExLlamaV2LayerAdapter:
             cache = self._cache
 
         if prefill:
+            cache.current_seq_len = 0
+        elif cache.current_seq_len is None:
             cache.current_seq_len = 0
 
         # Embedding (pre-layer modules)
