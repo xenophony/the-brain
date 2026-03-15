@@ -240,30 +240,42 @@ class ExLlamaV2LayerAdapter:
 
         cache = self._cache if use_cache else None
         if use_cache and past_len == 0:
-            self._cache.reset()  # full reset: clears KV entries + resets seq_len
+            self._cache.reset()
 
         p_len = past_len if use_cache else 0
         batch_size, seq_len = input_ids.shape
 
-        # Params signature: (batch_size, seq_len, past_len, input_mask, position_offsets)
         attn_params = ExLlamaV2Attention.Params(batch_size, seq_len, p_len)
 
-        # Move input_ids to embedding device
         x = _to_device(input_ids, self._pre_modules[0].device_idx)
 
-        # Pre-layer modules (embedding, optional pos embedding)
-        for module in self._pre_modules:
-            x = self._run_module(module, x, cache, attn_params, p_len)
+        # Pre-layer modules (embedding)
+        try:
+            for module in self._pre_modules:
+                x = self._run_module(module, x, cache, attn_params, p_len)
+            # Only log on non-standard paths to avoid noise
+            if len(layer_path) != self.num_layers:
+                print(f"DEBUG fwp: embedding OK, shape={x.shape}, device={x.device}, "
+                      f"path_len={len(layer_path)}, path[:5]={layer_path[:5]}")
+        except Exception as e:
+            print(f"DEBUG fwp: embedding FAILED: {type(e).__name__}: {e}")
+            raise
 
         # Transformer layers in custom order
-        for layer_idx in layer_path:
+        for k, layer_idx in enumerate(layer_path):
             layer = self._layer_modules[layer_idx]
-            if self._moe_mode:
-                attn, mlp = layer
-                x = self._run_module(attn, x, cache, attn_params, p_len)
-                x = self._run_module(mlp, x, cache, attn_params, p_len)
-            else:
-                x = self._run_module(layer, x, cache, attn_params, p_len)
+            try:
+                if self._moe_mode:
+                    attn, mlp = layer
+                    x = self._run_module(attn, x, cache, attn_params, p_len)
+                    x = self._run_module(mlp, x, cache, attn_params, p_len)
+                else:
+                    x = self._run_module(layer, x, cache, attn_params, p_len)
+                if k < 3 and len(layer_path) != self.num_layers:
+                    print(f"DEBUG fwp: layer {k} (idx={layer_idx}) OK, shape={x.shape}")
+            except Exception as e:
+                print(f"DEBUG fwp: layer {k} (idx={layer_idx}) FAILED: {type(e).__name__}: {e}")
+                raise
 
         # Post-layer modules (final norm + lm_head)
         for module in self._post_modules:
