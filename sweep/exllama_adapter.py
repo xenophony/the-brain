@@ -325,6 +325,12 @@ class ExLlamaV2LayerAdapter:
 
         return result
 
+    # Qwen3 chat template — /no_think disables internal reasoning mode
+    _CHAT_TEMPLATE = (
+        "<|im_start|>user\n{prompt} /no_think<|im_end|>\n"
+        "<|im_start|>assistant\n"
+    )
+
     def generate_short(
         self,
         prompt: str,
@@ -333,13 +339,13 @@ class ExLlamaV2LayerAdapter:
     ) -> str:
         """
         Generate a short completion using manual autoregressive decoding.
-        Temperature=0 for deterministic probes.
-
-        BLOCKER 3 fix: Proper prefill/decode separation. Prefill runs the
-        full prompt through the path once (resetting cache), then each
-        decode step runs one token without resetting.
+        Automatically wraps prompt in Qwen3 chat template if needed.
         """
         layer_path = self._layer_path or list(range(self.num_layers))
+
+        # Wrap in chat template if not already formatted
+        if "<|im_start|>" not in prompt:
+            prompt = self._CHAT_TEMPLATE.format(prompt=prompt)
 
         input_ids = self._encode(prompt, add_bos=True)
         # Ensure 2D shape (batch_size=1, seq_len)
@@ -377,7 +383,11 @@ class ExLlamaV2LayerAdapter:
             return ""
 
         # Decode only the newly generated token IDs (not the prompt)
-        return self._decode(generated_ids)
+        output = self._decode(generated_ids)
+        # Strip chat template artifacts from output
+        if "<|im_end|>" in output:
+            output = output.split("<|im_end|>")[0]
+        return output.strip()
 
     # ------------------------------------------------------------------ #
     #  Residual stream tracing interface                                    #
