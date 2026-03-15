@@ -240,7 +240,7 @@ class ExLlamaV2LayerAdapter:
 
         cache = self._cache if use_cache else None
         if use_cache and past_len == 0:
-            self._cache.current_seq_len = 0
+            self._cache.reset()  # full reset: clears KV entries + resets seq_len
 
         p_len = past_len if use_cache else 0
         batch_size, seq_len = input_ids.shape
@@ -304,6 +304,9 @@ class ExLlamaV2LayerAdapter:
         probe scoring — it only affects sweep circuit analysis.
         """
         import re
+
+        # Reset cache to prevent contamination from previous questions/configs
+        self._cache.reset()
 
         # Wrap in chat template if not already formatted
         if "<|im_start|>" not in prompt:
