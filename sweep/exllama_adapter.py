@@ -213,55 +213,60 @@ class ExLlamaV2LayerAdapter:
         """
         Run a forward pass using an explicit layer execution path.
 
+        Mirrors ExLlamaV2.forward_chunk() from the actual source:
+        - Creates ExLlamaV2Attention.Params(batch_size, seq_len, past_len, None, None)
+        - Calls module.forward(x, cache=cache, attn_params=attn_params, past_len=past_len)
+        - Moves tensors to correct device via module.device_idx
+
         Args:
-            use_cache: If False (default, for sweep/tracing), cache=None for all
-                modules — duplicate layers can't contaminate KV. If True (for
-                generation), uses self._cache for autoregressive KV caching.
-            past_len: For use_cache=True, the number of previously cached tokens.
-                Ignored when use_cache=False (always 0).
+            use_cache: False (sweep/tracing) = no KV cache, clean execution.
+                       True (generation) = KV cache for autoregressive decode.
+            past_len: Number of previously cached tokens (use_cache=True only).
         """
         from exllamav2.attn import ExLlamaV2Attention
 
         cache = self._cache if use_cache else None
         if use_cache and past_len == 0:
-            # Prefill: reset cache
             self._cache.current_seq_len = 0
 
         p_len = past_len if use_cache else 0
-        seq_len = input_ids.shape[-1] if input_ids.dim() >= 2 else 1
-        batch_size = input_ids.shape[0] if input_ids.dim() >= 2 else 1
+        batch_size, seq_len = input_ids.shape
 
-        # Create attention params
+        # Create attn_params exactly as model.forward_chunk does
         attn_params = ExLlamaV2Attention.Params(
-            batch_size=batch_size,
-            seq_len=seq_len,
-            past_len=p_len,
+            batch_size, seq_len, p_len, None, None
         )
 
-        # Embedding
-        hidden = self._pre_modules[0].forward(
-            input_ids, cache=cache, attn_params=attn_params, past_len=p_len)
-        if isinstance(hidden, tuple):
-            hidden = hidden[0]
+        # Move input_ids to model device
+        device = self._pre_modules[0].device_idx
+        if device is not None and device >= 0:
+            input_ids = input_ids.to(f"cuda:{device}")
 
-        # Layers in custom order
+        # Embedding (pre-layer modules)
+        x = input_ids
+        for module in self._pre_modules:
+            x = module.forward(x, cache=cache, attn_params=attn_params, past_len=p_len)
+
+        # Layers in custom order — move tensor between devices as needed
         for layer_idx in layer_path:
             layer = self._layer_modules[layer_idx]
             if self._moe_mode:
                 attn, mlp = layer
-                hidden = attn.forward(hidden, cache=cache,
-                                      attn_params=attn_params, past_len=p_len)
-                if isinstance(hidden, tuple):
-                    hidden = hidden[0]
-                hidden = mlp.forward(hidden, cache=cache,
-                                     attn_params=attn_params, past_len=p_len)
-                if isinstance(hidden, tuple):
-                    hidden = hidden[0]
+                # Move to attention device
+                d = attn.device_idx
+                if d is not None and d >= 0:
+                    x = x.to(f"cuda:{d}", non_blocking=True)
+                x = attn.forward(x, cache=cache, attn_params=attn_params, past_len=p_len)
+                # Move to MLP device
+                d = mlp.device_idx
+                if d is not None and d >= 0:
+                    x = x.to(f"cuda:{d}", non_blocking=True)
+                x = mlp.forward(x, cache=cache, attn_params=attn_params, past_len=p_len)
             else:
-                hidden = layer.forward(hidden, cache=cache,
-                                       attn_params=attn_params, past_len=p_len)
-                if isinstance(hidden, tuple):
-                    hidden = hidden[0]
+                d = layer.device_idx
+                if d is not None and d >= 0:
+                    x = x.to(f"cuda:{d}", non_blocking=True)
+                x = layer.forward(x, cache=cache, attn_params=attn_params, past_len=p_len)
 
         # Update cache position
         if use_cache:
@@ -269,12 +274,12 @@ class ExLlamaV2LayerAdapter:
 
         # Post modules (norm + lm_head)
         for module in self._post_modules:
-            hidden = module.forward(hidden, cache=cache,
-                                    attn_params=attn_params, past_len=p_len)
-            if isinstance(hidden, tuple):
-                hidden = hidden[0]
+            d = getattr(module, 'device_idx', None)
+            if d is not None and d >= 0:
+                x = x.to(f"cuda:{d}", non_blocking=True)
+            x = module.forward(x, cache=cache, attn_params=attn_params, past_len=p_len)
 
-        return hidden  # logits
+        return x  # logits
 
     def get_logprobs(
         self,
@@ -286,6 +291,8 @@ class ExLlamaV2LayerAdapter:
         Used by probes that need logit distributions.
         """
         input_ids = self._encode(prompt, add_bos=True)
+        if input_ids.dim() == 1:
+            input_ids = input_ids.unsqueeze(0)
 
         layer_path = self._layer_path or list(range(self.num_layers))
         logits = self.forward_with_path(input_ids, layer_path, use_cache=False)
@@ -324,12 +331,14 @@ class ExLlamaV2LayerAdapter:
         layer_path = self._layer_path or list(range(self.num_layers))
 
         input_ids = self._encode(prompt, add_bos=True)
+        # Ensure 2D shape (batch_size=1, seq_len)
+        if input_ids.dim() == 1:
+            input_ids = input_ids.unsqueeze(0)
 
         # Prefill: run full prompt, past_len=0 resets cache
         logits = self.forward_with_path(input_ids, layer_path, use_cache=True, past_len=0)
 
-        seq_len = input_ids.shape[-1] if input_ids.dim() >= 2 else 1
-        current_past_len = seq_len
+        current_past_len = input_ids.shape[-1]
 
         generated_ids = []
         for _ in range(max_new_tokens):
@@ -351,13 +360,13 @@ class ExLlamaV2LayerAdapter:
             generated_ids.append(token_id)
 
             # Decode step: single token, past_len increments
+            # next_id is already on CUDA from the argmax/multinomial
             logits = self.forward_with_path(next_id, layer_path, use_cache=True, past_len=current_past_len)
             current_past_len += 1
 
         if not generated_ids:
             return ""
 
-        # Decode generated token IDs back to text
         output_ids = torch.tensor([generated_ids], dtype=torch.long)
         return self._decode(output_ids)
 
@@ -382,56 +391,59 @@ class ExLlamaV2LayerAdapter:
         else:
             input_ids = prompt_or_ids
 
-        seq_len = input_ids.shape[-1] if input_ids.dim() >= 2 else 1
-        batch_size = input_ids.shape[0] if input_ids.dim() >= 2 else 1
+        batch_size, seq_len = input_ids.shape
+        attn_params = ExLlamaV2Attention.Params(batch_size, seq_len, 0, None, None)
 
-        attn_params = ExLlamaV2Attention.Params(
-            batch_size=batch_size, seq_len=seq_len, past_len=0)
+        # Move to model device
+        device = self._pre_modules[0].device_idx
+        if device is not None and device >= 0:
+            input_ids = input_ids.to(f"cuda:{device}")
 
-        hidden = self._pre_modules[0].forward(
-            input_ids, cache=None, attn_params=attn_params, past_len=0)
-        if isinstance(hidden, tuple):
-            hidden = hidden[0]
+        # Embedding
+        x = input_ids
+        for module in self._pre_modules:
+            x = module.forward(x, cache=None, attn_params=attn_params, past_len=0)
 
-        # Pre-layer-0 hook: embedding state (position -1)
+        # Pre-layer-0 hook: embedding state
         if hook_fn:
-            hook_fn(-1, -1, hidden.detach().clone())
+            hook_fn(-1, -1, x.detach().clone())
 
+        # Layers
         for k, layer_idx in enumerate(layer_path):
             layer = self._layer_modules[layer_idx]
             if self._moe_mode:
                 attn, mlp = layer
-                hidden = attn.forward(hidden, cache=None,
-                                      attn_params=attn_params, past_len=0)
-                if isinstance(hidden, tuple):
-                    hidden = hidden[0]
-                hidden = mlp.forward(hidden, cache=None,
-                                     attn_params=attn_params, past_len=0)
-                if isinstance(hidden, tuple):
-                    hidden = hidden[0]
+                d = attn.device_idx
+                if d is not None and d >= 0:
+                    x = x.to(f"cuda:{d}", non_blocking=True)
+                x = attn.forward(x, cache=None, attn_params=attn_params, past_len=0)
+                d = mlp.device_idx
+                if d is not None and d >= 0:
+                    x = x.to(f"cuda:{d}", non_blocking=True)
+                x = mlp.forward(x, cache=None, attn_params=attn_params, past_len=0)
             else:
-                hidden = layer.forward(hidden, cache=None,
-                                       attn_params=attn_params, past_len=0)
-                if isinstance(hidden, tuple):
-                    hidden = hidden[0]
+                d = layer.device_idx
+                if d is not None and d >= 0:
+                    x = x.to(f"cuda:{d}", non_blocking=True)
+                x = layer.forward(x, cache=None, attn_params=attn_params, past_len=0)
             if hook_fn:
-                hook_fn(k, layer_idx, hidden.detach().clone())
+                hook_fn(k, layer_idx, x.detach().clone())
 
-        return hidden
+        return x
 
     def project_to_vocab(self, hidden_state, target_token_ids=None):
         """Project hidden state to vocabulary probability distribution."""
         from exllamav2.attn import ExLlamaV2Attention
-        seq_len = hidden_state.shape[-2] if hidden_state.dim() >= 2 else 1
         batch_size = hidden_state.shape[0] if hidden_state.dim() >= 2 else 1
-        attn_params = ExLlamaV2Attention.Params(
-            batch_size=batch_size, seq_len=seq_len, past_len=0)
+        seq_len = hidden_state.shape[-2] if hidden_state.dim() >= 2 else 1
+        attn_params = ExLlamaV2Attention.Params(batch_size, seq_len, 0, None, None)
 
         h = hidden_state
         for module in self._post_modules:
+            d = getattr(module, 'device_idx', None)
+            if d is not None and d >= 0:
+                h = h.to(f"cuda:{d}", non_blocking=True)
             h = module.forward(h, cache=None, attn_params=attn_params, past_len=0)
-            if isinstance(h, tuple):
-                h = h[0]
 
         # Convert to probabilities
         logits = h[0, -1, :] if h.dim() == 3 else h[-1, :]
