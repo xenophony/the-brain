@@ -207,35 +207,40 @@ class ExLlamaV2LayerAdapter:
         self,
         input_ids: torch.Tensor,
         layer_path: list[int],
-        cache=None,
-        prefill: bool = True,
         use_cache: bool = False,
+        past_len: int = 0,
     ) -> torch.Tensor:
         """
         Run a forward pass using an explicit layer execution path.
 
         Args:
-            use_cache: If False (default, for sweep/tracing), passes cache=None
-                so duplicate layers don't contaminate each other's KV entries.
-                If True (for generation), uses KV caching for autoregressive decode.
+            use_cache: If False (default, for sweep/tracing), cache=None for all
+                modules — duplicate layers can't contaminate KV. If True (for
+                generation), uses self._cache for autoregressive KV caching.
+            past_len: For use_cache=True, the number of previously cached tokens.
+                Ignored when use_cache=False (always 0).
         """
-        if use_cache:
-            if cache is None:
-                cache = self._cache
-            if prefill:
-                cache.current_seq_len = 0
-            if cache.current_seq_len is None:
-                cache.current_seq_len = 0
-            c = cache
-            past_len = cache.current_seq_len
-        else:
-            c = None
-            past_len = 0
+        from exllamav2.attn import ExLlamaV2Attention
 
+        cache = self._cache if use_cache else None
+        if use_cache and past_len == 0:
+            # Prefill: reset cache
+            self._cache.current_seq_len = 0
+
+        p_len = past_len if use_cache else 0
         seq_len = input_ids.shape[-1] if input_ids.dim() >= 2 else 1
+        batch_size = input_ids.shape[0] if input_ids.dim() >= 2 else 1
+
+        # Create attention params
+        attn_params = ExLlamaV2Attention.Params(
+            batch_size=batch_size,
+            seq_len=seq_len,
+            past_len=p_len,
+        )
 
         # Embedding
-        hidden = self._pre_modules[0].forward(input_ids, cache=c, past_len=past_len)
+        hidden = self._pre_modules[0].forward(
+            input_ids, cache=cache, attn_params=attn_params, past_len=p_len)
         if isinstance(hidden, tuple):
             hidden = hidden[0]
 
@@ -244,24 +249,28 @@ class ExLlamaV2LayerAdapter:
             layer = self._layer_modules[layer_idx]
             if self._moe_mode:
                 attn, mlp = layer
-                hidden = attn.forward(hidden, cache=c, past_len=past_len)
+                hidden = attn.forward(hidden, cache=cache,
+                                      attn_params=attn_params, past_len=p_len)
                 if isinstance(hidden, tuple):
                     hidden = hidden[0]
-                hidden = mlp.forward(hidden, cache=c, past_len=past_len)
+                hidden = mlp.forward(hidden, cache=cache,
+                                     attn_params=attn_params, past_len=p_len)
                 if isinstance(hidden, tuple):
                     hidden = hidden[0]
             else:
-                hidden = layer.forward(hidden, cache=c, past_len=past_len)
+                hidden = layer.forward(hidden, cache=cache,
+                                       attn_params=attn_params, past_len=p_len)
                 if isinstance(hidden, tuple):
                     hidden = hidden[0]
 
-        # Update past_len for cache
+        # Update cache position
         if use_cache:
-            cache.current_seq_len += seq_len
+            self._cache.current_seq_len = p_len + seq_len
 
         # Post modules (norm + lm_head)
         for module in self._post_modules:
-            hidden = module.forward(hidden, cache=c, past_len=past_len)
+            hidden = module.forward(hidden, cache=cache,
+                                    attn_params=attn_params, past_len=p_len)
             if isinstance(hidden, tuple):
                 hidden = hidden[0]
 
@@ -279,7 +288,7 @@ class ExLlamaV2LayerAdapter:
         input_ids = self._encode(prompt, add_bos=True)
 
         layer_path = self._layer_path or list(range(self.num_layers))
-        logits = self.forward_with_path(input_ids, layer_path, prefill=True)
+        logits = self.forward_with_path(input_ids, layer_path, use_cache=False)
 
         # Last token logits
         last_logits = logits[0, -1, :]
@@ -315,10 +324,12 @@ class ExLlamaV2LayerAdapter:
         layer_path = self._layer_path or list(range(self.num_layers))
 
         input_ids = self._encode(prompt, add_bos=True)
-        cache = self._cache
 
-        # Prefill: run full prompt, reset cache
-        logits = self.forward_with_path(input_ids, layer_path, cache, prefill=True, use_cache=True)
+        # Prefill: run full prompt, past_len=0 resets cache
+        logits = self.forward_with_path(input_ids, layer_path, use_cache=True, past_len=0)
+
+        seq_len = input_ids.shape[-1] if input_ids.dim() >= 2 else 1
+        current_past_len = seq_len
 
         generated_ids = []
         for _ in range(max_new_tokens):
@@ -339,8 +350,9 @@ class ExLlamaV2LayerAdapter:
 
             generated_ids.append(token_id)
 
-            # Decode step: single token, don't reset cache
-            logits = self.forward_with_path(next_id, layer_path, cache, prefill=False, use_cache=True)
+            # Decode step: single token, past_len increments
+            logits = self.forward_with_path(next_id, layer_path, use_cache=True, past_len=current_past_len)
+            current_past_len += 1
 
         if not generated_ids:
             return ""
@@ -363,15 +375,21 @@ class ExLlamaV2LayerAdapter:
         if layer_path is None:
             layer_path = self._layer_path or list(range(self.num_layers))
 
+        from exllamav2.attn import ExLlamaV2Attention
+
         if isinstance(prompt_or_ids, str):
             input_ids = self._encode(prompt_or_ids, add_bos=True)
         else:
             input_ids = prompt_or_ids
 
-        # No cache for tracing — clean independent execution
-        past_len = 0
+        seq_len = input_ids.shape[-1] if input_ids.dim() >= 2 else 1
+        batch_size = input_ids.shape[0] if input_ids.dim() >= 2 else 1
 
-        hidden = self._pre_modules[0].forward(input_ids, cache=None, past_len=past_len)
+        attn_params = ExLlamaV2Attention.Params(
+            batch_size=batch_size, seq_len=seq_len, past_len=0)
+
+        hidden = self._pre_modules[0].forward(
+            input_ids, cache=None, attn_params=attn_params, past_len=0)
         if isinstance(hidden, tuple):
             hidden = hidden[0]
 
@@ -383,14 +401,17 @@ class ExLlamaV2LayerAdapter:
             layer = self._layer_modules[layer_idx]
             if self._moe_mode:
                 attn, mlp = layer
-                hidden = attn.forward(hidden, cache=None, past_len=past_len)
+                hidden = attn.forward(hidden, cache=None,
+                                      attn_params=attn_params, past_len=0)
                 if isinstance(hidden, tuple):
                     hidden = hidden[0]
-                hidden = mlp.forward(hidden, cache=None, past_len=past_len)
+                hidden = mlp.forward(hidden, cache=None,
+                                     attn_params=attn_params, past_len=0)
                 if isinstance(hidden, tuple):
                     hidden = hidden[0]
             else:
-                hidden = layer.forward(hidden, cache=None, past_len=past_len)
+                hidden = layer.forward(hidden, cache=None,
+                                       attn_params=attn_params, past_len=0)
                 if isinstance(hidden, tuple):
                     hidden = hidden[0]
             if hook_fn:
@@ -400,9 +421,15 @@ class ExLlamaV2LayerAdapter:
 
     def project_to_vocab(self, hidden_state, target_token_ids=None):
         """Project hidden state to vocabulary probability distribution."""
+        from exllamav2.attn import ExLlamaV2Attention
+        seq_len = hidden_state.shape[-2] if hidden_state.dim() >= 2 else 1
+        batch_size = hidden_state.shape[0] if hidden_state.dim() >= 2 else 1
+        attn_params = ExLlamaV2Attention.Params(
+            batch_size=batch_size, seq_len=seq_len, past_len=0)
+
         h = hidden_state
         for module in self._post_modules:
-            h = module.forward(h, cache=None, past_len=0)
+            h = module.forward(h, cache=None, attn_params=attn_params, past_len=0)
             if isinstance(h, tuple):
                 h = h[0]
 
