@@ -153,6 +153,12 @@ class ExLlamaV2LayerAdapter:
         if self._cache.current_seq_len is None:
             self._cache.current_seq_len = 0
 
+        # Store model device for tensor creation
+        self._device = torch.device(f"cuda:{self._pre_modules[0].device_idx}"
+                                     if self._pre_modules[0].device_idx is not None
+                                     and self._pre_modules[0].device_idx >= 0
+                                     else "cpu")
+
         print(f"Model loaded: {self.num_layers} transformer layers"
               f" ({'MoE' if self._moe_mode else 'dense'})")
 
@@ -346,12 +352,10 @@ class ExLlamaV2LayerAdapter:
             next_logits = logits[0, -1, :]
 
             if temperature == 0 or temperature < 1e-6:
-                next_id = next_logits.argmax().unsqueeze(0).unsqueeze(0)
+                token_id = next_logits.argmax().item()
             else:
                 probs = torch.softmax(next_logits / temperature, dim=-1)
-                next_id = torch.multinomial(probs, 1).unsqueeze(0)
-
-            token_id = next_id[0, 0].item()
+                token_id = torch.multinomial(probs, 1).item()
 
             # Check for EOS
             if token_id == self._tokenizer.eos_token:
@@ -359,8 +363,8 @@ class ExLlamaV2LayerAdapter:
 
             generated_ids.append(token_id)
 
-            # Decode step: single token, past_len increments
-            # next_id is already on CUDA from the argmax/multinomial
+            # Decode step: create next_id on correct device
+            next_id = torch.tensor([[token_id]], dtype=torch.long, device=self._device)
             logits = self.forward_with_path(next_id, layer_path, use_cache=True, past_len=current_past_len)
             current_past_len += 1
 
