@@ -354,7 +354,7 @@ class ExLlamaV2LayerAdapter:
             token_id = next_id[0, 0].item()
 
             # Check for EOS
-            if token_id == self._tokenizer.eos_token_id:
+            if token_id == self._tokenizer.eos_token:
                 break
 
             generated_ids.append(token_id)
