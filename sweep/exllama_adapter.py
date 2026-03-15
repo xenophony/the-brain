@@ -61,19 +61,6 @@ class ExLlamaV2LayerAdapter:
         except ImportError:
             from exllamav2 import ExLlamaV2Tokenizer
 
-        # Layer class: 0.3.x uses ExLlamaV2ParallelDecoder
-        try:
-            from exllamav2.model import ExLlamaV2ParallelDecoder as _LayerClass
-        except ImportError:
-            try:
-                from exllamav2 import ExLlamaV2DecoderLayer as _LayerClass
-            except ImportError:
-                raise ImportError(
-                    "Could not import layer class from exllamav2. "
-                    "Tried ExLlamaV2ParallelDecoder (>=0.3.x) and "
-                    "ExLlamaV2DecoderLayer (<0.3.x). Check your exllamav2 version."
-                )
-
         self._config = ExLlamaV2Config(self.model_path)
         self._config.arch_compat_overrides()
         self._config.max_seq_len = self.max_seq_len  # reduce KV cache VRAM
@@ -90,23 +77,71 @@ class ExLlamaV2LayerAdapter:
         else:
             self._tokenizer = ExLlamaV2Tokenizer(self._config)
 
-        # Detect layer modules dynamically — works with both old and new ExLlamaV2 versions
+        # Detect layer structure — supports both architectures:
+        #   Dense models: ExLlamaV2ParallelDecoder or ExLlamaV2DecoderLayer per layer
+        #   MoE models (Qwen3): ExLlamaV2Attention + ExLlamaV2MoEMLP pairs per layer
         all_modules = self._model.modules
-        layer_indices = [
-            i for i, m in enumerate(all_modules)
-            if isinstance(m, _LayerClass)
-        ]
+        self._moe_mode = False
 
+        # Try 1: ParallelDecoder (dense models, ExLlamaV2 >= 0.3.x)
+        try:
+            from exllamav2.model import ExLlamaV2ParallelDecoder
+            layer_indices = [i for i, m in enumerate(all_modules)
+                             if isinstance(m, ExLlamaV2ParallelDecoder)]
+            if layer_indices:
+                self.num_layers = len(layer_indices)
+                self._pre_modules = all_modules[:layer_indices[0]]
+                self._post_modules = all_modules[layer_indices[-1] + 1:]
+                self._layer_modules = [all_modules[i] for i in layer_indices]
+        except ImportError:
+            layer_indices = []
+
+        # Try 2: DecoderLayer (dense models, older ExLlamaV2)
         if not layer_indices:
-            raise RuntimeError(
-                f"No {_LayerClass.__name__} modules found in model. "
-                "Check ExLlamaV2 version compatibility."
-            )
+            try:
+                from exllamav2 import ExLlamaV2DecoderLayer
+                layer_indices = [i for i, m in enumerate(all_modules)
+                                 if isinstance(m, ExLlamaV2DecoderLayer)]
+                if layer_indices:
+                    self.num_layers = len(layer_indices)
+                    self._pre_modules = all_modules[:layer_indices[0]]
+                    self._post_modules = all_modules[layer_indices[-1] + 1:]
+                    self._layer_modules = [all_modules[i] for i in layer_indices]
+            except ImportError:
+                pass
 
-        self.num_layers = len(layer_indices)
-        self._pre_modules = all_modules[:layer_indices[0]]
-        self._post_modules = all_modules[layer_indices[-1] + 1:]
-        self._layer_modules = [all_modules[i] for i in layer_indices]
+        # Try 3: Attention + MoEMLP pairs (MoE models like Qwen3)
+        if not layer_indices:
+            from exllamav2.model import ExLlamaV2Attention
+            try:
+                from exllamav2.model import ExLlamaV2MoEMLP
+            except ImportError:
+                from exllamav2 import ExLlamaV2MoEMLP
+
+            attn_modules = [m for m in all_modules if isinstance(m, ExLlamaV2Attention)]
+            mlp_modules = [m for m in all_modules if isinstance(m, ExLlamaV2MoEMLP)]
+
+            if attn_modules and len(attn_modules) == len(mlp_modules):
+                self._moe_mode = True
+                self.num_layers = len(attn_modules)
+                # layer_modules stores (attention, mlp) pairs
+                self._layer_modules = list(zip(attn_modules, mlp_modules))
+
+                # Pre-modules: everything before first attention
+                first_attn_idx = next(i for i, m in enumerate(all_modules)
+                                      if isinstance(m, ExLlamaV2Attention))
+                self._pre_modules = all_modules[:first_attn_idx]
+
+                # Post-modules: everything after last MLP
+                last_mlp_idx = max(i for i, m in enumerate(all_modules)
+                                   if isinstance(m, ExLlamaV2MoEMLP))
+                self._post_modules = all_modules[last_mlp_idx + 1:]
+            else:
+                raise RuntimeError(
+                    f"Could not detect layer structure. "
+                    f"Found {len(attn_modules)} Attention and {len(mlp_modules)} MoEMLP modules. "
+                    f"Module types: {[type(m).__name__ for m in all_modules[:10]]}"
+                )
 
         # Allocate default cache for standard path
         self._cache = ExLlamaV2Cache(
@@ -178,10 +213,21 @@ class ExLlamaV2LayerAdapter:
 
         # Layers in custom order
         for layer_idx in layer_path:
-            module = self._layer_modules[layer_idx]
-            hidden = module.forward(hidden, cache, None)
-            if isinstance(hidden, tuple):
-                hidden = hidden[0]
+            layer = self._layer_modules[layer_idx]
+            if self._moe_mode:
+                # MoE: execute (Attention, MoEMLP) pair
+                attn, mlp = layer
+                hidden = attn.forward(hidden, cache, None)
+                if isinstance(hidden, tuple):
+                    hidden = hidden[0]
+                hidden = mlp.forward(hidden, cache, None)
+                if isinstance(hidden, tuple):
+                    hidden = hidden[0]
+            else:
+                # Dense: single module per layer
+                hidden = layer.forward(hidden, cache, None)
+                if isinstance(hidden, tuple):
+                    hidden = hidden[0]
 
         # Norm + LM head (post-layer modules)
         for module in self._post_modules:
@@ -306,10 +352,19 @@ class ExLlamaV2LayerAdapter:
             hook_fn(-1, -1, hidden.detach().clone())
 
         for k, layer_idx in enumerate(layer_path):
-            module = self._layer_modules[layer_idx]
-            hidden = module.forward(hidden, cache, None)
-            if isinstance(hidden, tuple):
-                hidden = hidden[0]
+            layer = self._layer_modules[layer_idx]
+            if self._moe_mode:
+                attn, mlp = layer
+                hidden = attn.forward(hidden, cache, None)
+                if isinstance(hidden, tuple):
+                    hidden = hidden[0]
+                hidden = mlp.forward(hidden, cache, None)
+                if isinstance(hidden, tuple):
+                    hidden = hidden[0]
+            else:
+                hidden = layer.forward(hidden, cache, None)
+                if isinstance(hidden, tuple):
+                    hidden = hidden[0]
             if hook_fn:
                 hook_fn(k, layer_idx, hidden.detach().clone())
 
