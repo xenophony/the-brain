@@ -174,13 +174,16 @@ class ExLlamaV2LayerAdapter:
             return ids
 
     def _decode(self, token_ids) -> str:
-        """Decode token IDs to text, compatible with both tokenizer versions."""
+        """Decode token IDs to text. ExLlamaV2TokenizerHF expects List[int]."""
         if hasattr(token_ids, 'tolist'):
             token_ids = token_ids.tolist()
-        result = self._tokenizer.decode(token_ids)
-        if isinstance(result, list):
-            return result[0]
-        return result
+        # Flatten nested list [[1,2,3]] -> [1,2,3]
+        if isinstance(token_ids, list) and len(token_ids) > 0:
+            if isinstance(token_ids[0], list):
+                token_ids = token_ids[0]
+        # Ensure flat list of ints
+        token_ids = [int(t) for t in token_ids]
+        return self._tokenizer.decode(token_ids)
 
     def set_layer_path(self, path: list[int]):
         """Set the layer execution order for subsequent forward passes."""
