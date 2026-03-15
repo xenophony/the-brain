@@ -173,18 +173,16 @@ class ExLlamaV2LayerAdapter:
             lazy=False,
         )
 
-        # Detect GPU device from first layer module
-        self._device = torch.device("cpu")
+        # Detect GPU device — ExLlamaV2 modules use device_idx attribute
+        self._device = torch.device("cuda:0")  # default assumption
         first_layer = self._layer_modules[0]
-        if self._moe_mode:
-            first_module = first_layer[0]  # attention module from pair
-        else:
-            first_module = first_layer
-        try:
-            self._device = next(first_module.parameters()).device
-        except (StopIteration, AttributeError):
-            if hasattr(first_module, 'device_idx') and first_module.device_idx is not None:
-                self._device = torch.device(f"cuda:{first_module.device_idx}")
+        first_module = first_layer[0] if self._moe_mode else first_layer
+        # Try device_idx (ExLlamaV2 native)
+        d = getattr(first_module, 'device_idx', None)
+        if d is not None and d >= 0:
+            self._device = torch.device(f"cuda:{d}")
+        elif torch.cuda.is_available():
+            self._device = torch.device("cuda:0")
 
         print(f"Model loaded: {self.num_layers} transformer layers"
               f" ({'MoE' if self._moe_mode else 'dense'})"
