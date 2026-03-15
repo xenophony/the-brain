@@ -350,6 +350,8 @@ class ExLlamaV2LayerAdapter:
             return ""
 
         output = self._decode(generated_ids)
+        if isinstance(output, list):
+            output = ''.join(output)
 
         # Clean output
         if "<|im_end|>" in output:
