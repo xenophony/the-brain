@@ -225,8 +225,10 @@ class ExLlamaV2LayerAdapter:
 
         if prefill:
             cache.current_seq_len = 0
-        elif cache.current_seq_len is None:
+        if cache.current_seq_len is None:
             cache.current_seq_len = 0
+
+        past_len = cache.current_seq_len
 
         # Embedding (pre-layer modules)
         hidden = input_ids
@@ -241,7 +243,7 @@ class ExLlamaV2LayerAdapter:
             if self._moe_mode:
                 # MoE: execute (Attention, MoEMLP) pair
                 attn, mlp = layer
-                hidden = attn.forward(hidden, cache, None)
+                hidden = attn.forward(hidden, cache, None, past_len=past_len)
                 if isinstance(hidden, tuple):
                     hidden = hidden[0]
                 hidden = mlp.forward(hidden, cache, None)
@@ -252,6 +254,12 @@ class ExLlamaV2LayerAdapter:
                 hidden = layer.forward(hidden, cache, None)
                 if isinstance(hidden, tuple):
                     hidden = hidden[0]
+
+        # Update cache seq len after processing
+        if input_ids.dim() >= 2:
+            cache.current_seq_len += input_ids.shape[-1]
+        else:
+            cache.current_seq_len += 1
 
         # Norm + LM head (post-layer modules)
         for module in self._post_modules:
@@ -364,6 +372,7 @@ class ExLlamaV2LayerAdapter:
 
         cache = self._cache
         cache.current_seq_len = 0
+        past_len = 0
 
         hidden = input_ids
         for module in self._pre_modules:
@@ -379,7 +388,7 @@ class ExLlamaV2LayerAdapter:
             layer = self._layer_modules[layer_idx]
             if self._moe_mode:
                 attn, mlp = layer
-                hidden = attn.forward(hidden, cache, None)
+                hidden = attn.forward(hidden, cache, None, past_len=past_len)
                 if isinstance(hidden, tuple):
                     hidden = hidden[0]
                 hidden = mlp.forward(hidden, cache, None)
