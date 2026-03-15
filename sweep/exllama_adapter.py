@@ -209,61 +209,59 @@ class ExLlamaV2LayerAdapter:
         layer_path: list[int],
         cache=None,
         prefill: bool = True,
+        use_cache: bool = False,
     ) -> torch.Tensor:
         """
         Run a forward pass using an explicit layer execution path.
 
-        For prefill (full prompt), resets cache. For decode (single token),
-        appends to existing cache state.
-
-        BLOCKER 1: Each execution position in layer_path gets its own
-        cache attention context by tracking position independently.
-        BLOCKER 3: Only reset cache on prefill, not on decode steps.
+        Args:
+            use_cache: If False (default, for sweep/tracing), passes cache=None
+                so duplicate layers don't contaminate each other's KV entries.
+                If True (for generation), uses KV caching for autoregressive decode.
         """
-        if cache is None:
-            cache = self._cache
+        if use_cache:
+            if cache is None:
+                cache = self._cache
+            if prefill:
+                cache.current_seq_len = 0
+            if cache.current_seq_len is None:
+                cache.current_seq_len = 0
+            c = cache
+            past_len = cache.current_seq_len
+        else:
+            c = None
+            past_len = 0
 
-        if prefill:
-            cache.current_seq_len = 0
-        if cache.current_seq_len is None:
-            cache.current_seq_len = 0
+        seq_len = input_ids.shape[-1] if input_ids.dim() >= 2 else 1
 
-        past_len = cache.current_seq_len
-
-        # Embedding (pre-layer modules)
-        hidden = input_ids
-        for module in self._pre_modules:
-            hidden = module.forward(hidden, cache, None)
-            if isinstance(hidden, tuple):
-                hidden = hidden[0]
+        # Embedding
+        hidden = self._pre_modules[0].forward(input_ids, cache=c, past_len=past_len)
+        if isinstance(hidden, tuple):
+            hidden = hidden[0]
 
         # Layers in custom order
         for layer_idx in layer_path:
             layer = self._layer_modules[layer_idx]
             if self._moe_mode:
-                # MoE: execute (Attention, MoEMLP) pair
                 attn, mlp = layer
-                hidden = attn.forward(hidden, cache, None, past_len=past_len)
+                hidden = attn.forward(hidden, cache=c, past_len=past_len)
                 if isinstance(hidden, tuple):
                     hidden = hidden[0]
-                hidden = mlp.forward(hidden, cache, None)
+                hidden = mlp.forward(hidden, cache=c, past_len=past_len)
                 if isinstance(hidden, tuple):
                     hidden = hidden[0]
             else:
-                # Dense: single module per layer
-                hidden = layer.forward(hidden, cache, None)
+                hidden = layer.forward(hidden, cache=c, past_len=past_len)
                 if isinstance(hidden, tuple):
                     hidden = hidden[0]
 
-        # Update cache seq len after processing
-        if input_ids.dim() >= 2:
-            cache.current_seq_len += input_ids.shape[-1]
-        else:
-            cache.current_seq_len += 1
+        # Update past_len for cache
+        if use_cache:
+            cache.current_seq_len += seq_len
 
-        # Norm + LM head (post-layer modules)
+        # Post modules (norm + lm_head)
         for module in self._post_modules:
-            hidden = module.forward(hidden, cache, None)
+            hidden = module.forward(hidden, cache=c, past_len=past_len)
             if isinstance(hidden, tuple):
                 hidden = hidden[0]
 
@@ -320,7 +318,7 @@ class ExLlamaV2LayerAdapter:
         cache = self._cache
 
         # Prefill: run full prompt, reset cache
-        logits = self.forward_with_path(input_ids, layer_path, cache, prefill=True)
+        logits = self.forward_with_path(input_ids, layer_path, cache, prefill=True, use_cache=True)
 
         generated_ids = []
         for _ in range(max_new_tokens):
@@ -342,7 +340,7 @@ class ExLlamaV2LayerAdapter:
             generated_ids.append(token_id)
 
             # Decode step: single token, don't reset cache
-            logits = self.forward_with_path(next_id, layer_path, cache, prefill=False)
+            logits = self.forward_with_path(next_id, layer_path, cache, prefill=False, use_cache=True)
 
         if not generated_ids:
             return ""
@@ -370,15 +368,12 @@ class ExLlamaV2LayerAdapter:
         else:
             input_ids = prompt_or_ids
 
-        cache = self._cache
-        cache.current_seq_len = 0
+        # No cache for tracing — clean independent execution
         past_len = 0
 
-        hidden = input_ids
-        for module in self._pre_modules:
-            hidden = module.forward(hidden, cache, None)
-            if isinstance(hidden, tuple):
-                hidden = hidden[0]
+        hidden = self._pre_modules[0].forward(input_ids, cache=None, past_len=past_len)
+        if isinstance(hidden, tuple):
+            hidden = hidden[0]
 
         # Pre-layer-0 hook: embedding state (position -1)
         if hook_fn:
@@ -388,14 +383,14 @@ class ExLlamaV2LayerAdapter:
             layer = self._layer_modules[layer_idx]
             if self._moe_mode:
                 attn, mlp = layer
-                hidden = attn.forward(hidden, cache, None, past_len=past_len)
+                hidden = attn.forward(hidden, cache=None, past_len=past_len)
                 if isinstance(hidden, tuple):
                     hidden = hidden[0]
-                hidden = mlp.forward(hidden, cache, None)
+                hidden = mlp.forward(hidden, cache=None, past_len=past_len)
                 if isinstance(hidden, tuple):
                     hidden = hidden[0]
             else:
-                hidden = layer.forward(hidden, cache, None)
+                hidden = layer.forward(hidden, cache=None, past_len=past_len)
                 if isinstance(hidden, tuple):
                     hidden = hidden[0]
             if hook_fn:
@@ -405,10 +400,9 @@ class ExLlamaV2LayerAdapter:
 
     def project_to_vocab(self, hidden_state, target_token_ids=None):
         """Project hidden state to vocabulary probability distribution."""
-        # Apply final norm + lm_head
         h = hidden_state
         for module in self._post_modules:
-            h = module.forward(h, self._cache, None)
+            h = module.forward(h, cache=None, past_len=0)
             if isinstance(h, tuple):
                 h = h[0]
 
