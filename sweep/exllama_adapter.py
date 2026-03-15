@@ -43,11 +43,22 @@ class ExLlamaV2LayerAdapter:
         self._load()
 
     def _load(self):
-        from exllamav2 import (
-            ExLlamaV2, ExLlamaV2Config, ExLlamaV2Cache, ExLlamaV2Tokenizer
-        )
+        from exllamav2 import ExLlamaV2, ExLlamaV2Config
 
-        # ExLlamaV2 >= 0.3.x uses ExLlamaV2ParallelDecoder instead of ExLlamaV2DecoderLayer
+        # ExLlamaV2 0.3.x moved/renamed several classes
+        # Cache
+        try:
+            from exllamav2.cache import ExLlamaV2Cache
+        except ImportError:
+            from exllamav2 import ExLlamaV2Cache
+
+        # Tokenizer: 0.3.x uses ExLlamaV2TokenizerHF
+        try:
+            from exllamav2.tokenizer import ExLlamaV2TokenizerHF as _TokenizerClass
+        except ImportError:
+            from exllamav2 import ExLlamaV2Tokenizer as _TokenizerClass
+
+        # Layer class: 0.3.x uses ExLlamaV2ParallelDecoder
         try:
             from exllamav2.model import ExLlamaV2ParallelDecoder as _LayerClass
         except ImportError:
@@ -66,7 +77,7 @@ class ExLlamaV2LayerAdapter:
         self._model = ExLlamaV2(self._config)
         self._model.load(lazy=False)
 
-        self._tokenizer = ExLlamaV2Tokenizer(self._config)
+        self._tokenizer = _TokenizerClass(self._config)
 
         # Detect layer modules dynamically — works with both old and new ExLlamaV2 versions
         all_modules = self._model.modules
@@ -107,7 +118,10 @@ class ExLlamaV2LayerAdapter:
         position needs its own KV cache slot. We create a cache with
         n_effective layers and remap layer -> position during execution.
         """
-        from exllamav2 import ExLlamaV2Cache
+        try:
+            from exllamav2.cache import ExLlamaV2Cache
+        except ImportError:
+            from exllamav2 import ExLlamaV2Cache
 
         n_effective = len(layer_path)
         if n_effective == self.num_layers:

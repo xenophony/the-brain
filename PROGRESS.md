@@ -353,3 +353,6 @@
 ## ExLlamaV2 0.3.2 Compatibility
 [00:30] DONE: Fixed layer detection: ExLlamaV2DecoderLayer -> ExLlamaV2ParallelDecoder (from exllamav2.model)
 [00:30] DONE: Added version-compatible import fallback: tries ExLlamaV2ParallelDecoder first, falls back to ExLlamaV2DecoderLayer for older versions
+[00:45] DONE: Fixed ExLlamaV2Tokenizer -> ExLlamaV2TokenizerHF (from exllamav2.tokenizer)
+[00:45] DONE: Fixed ExLlamaV2Cache import (from exllamav2.cache)
+[00:45] DONE: All imports now have version-compatible fallbacks for both 0.2.x and 0.3.x
