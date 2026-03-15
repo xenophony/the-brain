@@ -349,3 +349,7 @@
 [--:--] DONE: Updated run_baselines.py ALL_PROBES (added pong probes, removed spatial_pathfinding from defaults)
 [--:--] DONE: Updated CLAUDE.md brain region mapping table
 [--:--] DONE: All 107 tests pass (90 existing + 17 new)
+
+## ExLlamaV2 0.3.2 Compatibility
+[00:30] DONE: Fixed layer detection: ExLlamaV2DecoderLayer -> ExLlamaV2ParallelDecoder (from exllamav2.model)
+[00:30] DONE: Added version-compatible import fallback: tries ExLlamaV2ParallelDecoder first, falls back to ExLlamaV2DecoderLayer for older versions

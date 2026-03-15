@@ -46,7 +46,19 @@ class ExLlamaV2LayerAdapter:
         from exllamav2 import (
             ExLlamaV2, ExLlamaV2Config, ExLlamaV2Cache, ExLlamaV2Tokenizer
         )
-        from exllamav2 import ExLlamaV2DecoderLayer
+
+        # ExLlamaV2 >= 0.3.x uses ExLlamaV2ParallelDecoder instead of ExLlamaV2DecoderLayer
+        try:
+            from exllamav2.model import ExLlamaV2ParallelDecoder as _LayerClass
+        except ImportError:
+            try:
+                from exllamav2 import ExLlamaV2DecoderLayer as _LayerClass
+            except ImportError:
+                raise ImportError(
+                    "Could not import layer class from exllamav2. "
+                    "Tried ExLlamaV2ParallelDecoder (>=0.3.x) and "
+                    "ExLlamaV2DecoderLayer (<0.3.x). Check your exllamav2 version."
+                )
 
         self._config = ExLlamaV2Config(self.model_path)
         self._config.arch_compat_overrides()
@@ -56,16 +68,16 @@ class ExLlamaV2LayerAdapter:
 
         self._tokenizer = ExLlamaV2Tokenizer(self._config)
 
-        # Detect layer modules dynamically (BLOCKER 2 fix)
+        # Detect layer modules dynamically — works with both old and new ExLlamaV2 versions
         all_modules = self._model.modules
         layer_indices = [
             i for i, m in enumerate(all_modules)
-            if isinstance(m, ExLlamaV2DecoderLayer)
+            if isinstance(m, _LayerClass)
         ]
 
         if not layer_indices:
             raise RuntimeError(
-                "No ExLlamaV2DecoderLayer modules found. "
+                f"No {_LayerClass.__name__} modules found in model. "
                 "Check ExLlamaV2 version compatibility."
             )
 
