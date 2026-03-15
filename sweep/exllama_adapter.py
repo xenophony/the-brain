@@ -152,6 +152,24 @@ class ExLlamaV2LayerAdapter:
 
         print(f"Model loaded: {self.num_layers} transformer layers")
 
+    def _encode(self, text: str, add_bos: bool = True) -> torch.Tensor:
+        """Encode text to token IDs, compatible with both tokenizer versions."""
+        try:
+            return self._tokenizer.encode(text, add_bos=add_bos)
+        except TypeError:
+            # ExLlamaV2TokenizerHF doesn't accept add_bos — HF tokenizer handles it
+            ids = self._tokenizer.encode(text)
+            if isinstance(ids, list):
+                ids = torch.tensor([ids], dtype=torch.long)
+            return ids
+
+    def _decode(self, token_ids) -> str:
+        """Decode token IDs to text, compatible with both tokenizer versions."""
+        result = self._tokenizer.decode(token_ids)
+        if isinstance(result, list):
+            return result[0]
+        return result
+
     def set_layer_path(self, path: list[int]):
         """Set the layer execution order for subsequent forward passes."""
         self._layer_path = path
@@ -246,7 +264,7 @@ class ExLlamaV2LayerAdapter:
         Get log probabilities for specific tokens at the final position.
         Used by probes that need logit distributions.
         """
-        input_ids = self._tokenizer.encode(prompt, add_bos=True)
+        input_ids = self._encode(prompt, add_bos=True)
 
         layer_path = self._layer_path or list(range(self.num_layers))
         logits = self.forward_with_path(input_ids, layer_path, prefill=True)
@@ -260,7 +278,7 @@ class ExLlamaV2LayerAdapter:
 
         result = {}
         for token_str in target_tokens:
-            token_ids = self._tokenizer.encode(token_str, add_bos=False)
+            token_ids = self._encode(token_str, add_bos=False)
             if token_ids.shape[-1] >= 1:
                 result[token_str] = log_probs[token_ids[0, 0]].item()
             else:
@@ -284,7 +302,7 @@ class ExLlamaV2LayerAdapter:
         """
         layer_path = self._layer_path or list(range(self.num_layers))
 
-        input_ids = self._tokenizer.encode(prompt, add_bos=True)
+        input_ids = self._encode(prompt, add_bos=True)
         cache = self._cache
 
         # Prefill: run full prompt, reset cache
@@ -317,7 +335,7 @@ class ExLlamaV2LayerAdapter:
 
         # Decode generated token IDs back to text
         output_ids = torch.tensor([generated_ids], dtype=torch.long)
-        return self._tokenizer.decode(output_ids)[0]
+        return self._decode(output_ids)
 
     # ------------------------------------------------------------------ #
     #  Residual stream tracing interface                                    #
@@ -334,7 +352,7 @@ class ExLlamaV2LayerAdapter:
             layer_path = self._layer_path or list(range(self.num_layers))
 
         if isinstance(prompt_or_ids, str):
-            input_ids = self._tokenizer.encode(prompt_or_ids, add_bos=True)
+            input_ids = self._encode(prompt_or_ids, add_bos=True)
         else:
             input_ids = prompt_or_ids
 
@@ -393,12 +411,12 @@ class ExLlamaV2LayerAdapter:
         if isinstance(token_strings, list):
             ids = []
             for s in token_strings:
-                encoded = self._tokenizer.encode(s, add_bos=False)
+                encoded = self._encode(s, add_bos=False)
                 if encoded.shape[-1] >= 1:
                     ids.append(encoded[0, 0].item())
             return ids
-        encoded = self._tokenizer.encode(token_strings, add_bos=False)
+        encoded = self._encode(token_strings, add_bos=False)
         return [encoded[0, 0].item()] if encoded.shape[-1] >= 1 else []
 
     def tokenize(self, text: str) -> list[int]:
-        return self._tokenizer.encode(text, add_bos=True).tolist()[0]
+        return self._encode(text, add_bos=True).tolist()[0]
