@@ -342,59 +342,43 @@ class ExLlamaV2LayerAdapter:
         temperature: float = 0.0
     ) -> str:
         """
-        Generate a short completion using manual autoregressive decoding.
-        Automatically wraps prompt in Qwen3 chat template if needed.
+        Generate a short completion using ExLlamaV2StreamingGenerator.
+        Handles cache management and decoding correctly.
+        Used for probe scoring — not for circuit analysis.
         """
-        layer_path = self._layer_path or list(range(self.num_layers))
+        import re
+        from exllamav2.generator import ExLlamaV2StreamingGenerator, ExLlamaV2Sampler
 
         # Wrap in chat template if not already formatted
         if "<|im_start|>" not in prompt:
             prompt = self._CHAT_TEMPLATE_NO_THINK.format(prompt=prompt)
 
-        input_ids = self._encode(prompt, add_bos=True)
-        # Ensure 2D shape (batch_size=1, seq_len)
-        if input_ids.dim() == 1:
-            input_ids = input_ids.unsqueeze(0)
+        generator = ExLlamaV2StreamingGenerator(
+            self._model, self._cache, self._tokenizer
+        )
 
-        # Prefill: run full prompt, past_len=0 resets cache
-        logits = self.forward_with_path(input_ids, layer_path, use_cache=True, past_len=0)
+        settings = ExLlamaV2Sampler.Settings()
+        settings.temperature = temperature
+        settings.top_k = 1 if temperature == 0.0 else 50
 
-        current_past_len = input_ids.shape[-1]
+        generator.set_stop_conditions([
+            self._tokenizer.eos_token,
+            "<|im_end|>",
+        ])
 
-        generated_ids = []
+        generator.begin_stream_ex(prompt, settings)
+
+        output = ""
         for _ in range(max_new_tokens):
-            # Sample next token from last position
-            next_logits = logits[0, -1, :]
-
-            if temperature == 0 or temperature < 1e-6:
-                token_id = next_logits.argmax().item()
-            else:
-                probs = torch.softmax(next_logits / temperature, dim=-1)
-                token_id = torch.multinomial(probs, 1).item()
-
-            # Check for EOS
-            if token_id == self._tokenizer.eos_token:
+            chunk, eos, _ = generator.stream_ex()
+            output += chunk
+            if eos:
                 break
 
-            generated_ids.append(token_id)
-
-            # Decode step: create next_id on correct device
-            next_id = torch.tensor([[token_id]], dtype=torch.long, device=self._device)
-            logits = self.forward_with_path(next_id, layer_path, use_cache=True, past_len=current_past_len)
-            current_past_len += 1
-
-        if not generated_ids:
-            return ""
-
-        # Decode only the newly generated token IDs (not the prompt)
-        output = self._decode(generated_ids)
-        # Strip chat template artifacts
+        # Clean output
         if "<|im_end|>" in output:
             output = output.split("<|im_end|>")[0]
-        # Strip any <think>...</think> blocks that slipped through
-        import re
         output = re.sub(r'<think>.*?</think>', '', output, flags=re.DOTALL)
-        # Take only first line (answer before any newline explanation)
         output = output.strip().split('\n')[0]
         return output.strip()
 
