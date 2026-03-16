@@ -192,36 +192,40 @@ class ExLlamaV2LayerAdapter:
 
     def forward_with_path(
         self, input_ids: torch.Tensor, layer_path: list[int],
+        cache=None, past_len: int = 0,
     ) -> torch.Tensor:
-        """Forward pass with custom layer path. Always cache=None.
+        """Forward pass with custom layer path.
 
-        KV cache is never used here because layer paths may contain
-        duplicate layers — writing the same cache slot twice causes
-        std::bad_alloc in ext_c.q_attn_forward_1.
+        cache: an ExLlamaV2Cache instance, or None for no caching.
+               Caller is responsible for creating a FRESH cache per
+               generate_short() call — stale cache slots from a previous
+               run cause std::bad_alloc when duplicate layers write the
+               same slot twice.
+        past_len: number of previously cached tokens (for autoregressive decode).
         """
         from exllamav2.attn import ExLlamaV2Attention
 
         batch_size, seq_len = input_ids.shape
-        attn_params = ExLlamaV2Attention.Params(batch_size, seq_len, 0)
+        attn_params = ExLlamaV2Attention.Params(batch_size, seq_len, past_len)
 
         # Embedding
         x = input_ids
         for module in self._pre_modules:
-            x = self._run_module(module, x, None, attn_params, 0)
+            x = self._run_module(module, x, cache, attn_params, past_len)
 
         # Transformer layers in custom order
         for layer_idx in layer_path:
             layer = self._layer_modules[layer_idx]
             if self._moe_mode:
                 attn, mlp = layer
-                x = self._run_module(attn, x, None, attn_params, 0)
-                x = self._run_module(mlp, x, None, attn_params, 0)
+                x = self._run_module(attn, x, cache, attn_params, past_len)
+                x = self._run_module(mlp, x, cache, attn_params, past_len)
             else:
-                x = self._run_module(layer, x, None, attn_params, 0)
+                x = self._run_module(layer, x, cache, attn_params, past_len)
 
         # Post-layer modules (norm + lm_head)
         for module in self._post_modules:
-            x = self._run_module(module, x, None, attn_params, 0)
+            x = self._run_module(module, x, cache, attn_params, past_len)
 
         return x
 
@@ -240,12 +244,14 @@ class ExLlamaV2LayerAdapter:
 
     def generate_short(self, prompt: str, max_new_tokens: int = 20,
                        temperature: float = 0.0) -> str:
-        """Generate short completion. No KV cache — passes full sequence each step.
+        """Generate short completion with fresh KV cache per call.
 
-        This is O(n*seq_len) per generation but safe for duplicate-layer paths.
-        For max_new_tokens<=20 on 7B models this is fast enough.
+        A fresh cache is created each call so that duplicate layers in
+        the path never hit stale cache slots (the cause of bad_alloc).
+        Uses O(n) autoregressive decoding via KV cache.
         """
         import re
+        from exllamav2.cache import ExLlamaV2Cache
 
         if "<|im_start|>" not in prompt:
             prompt = self._CHAT_TEMPLATE_NO_THINK.format(prompt=prompt)
@@ -254,10 +260,19 @@ class ExLlamaV2LayerAdapter:
         layer_path = self._layer_path or list(range(self.num_layers))
         generated_ids = []
 
+        # Fresh cache per call — empty slots, no stale KV entries
+        cache = ExLlamaV2Cache(
+            self._model, batch_size=1,
+            max_seq_len=512, lazy=False,
+        )
+
         with torch.inference_mode():
+            # Prefill: process full prompt
+            logits = self.forward_with_path(input_ids, layer_path,
+                                            cache=cache, past_len=0)
+            current_past_len = input_ids.shape[1]
+
             for _ in range(max_new_tokens):
-                # Full forward pass on entire sequence each step
-                logits = self.forward_with_path(input_ids, layer_path)
                 next_logits = logits[0, -1, :].float()
 
                 if temperature <= 0.0 or temperature < 1e-7:
@@ -271,9 +286,12 @@ class ExLlamaV2LayerAdapter:
 
                 generated_ids.append(next_id)
 
-                # Append new token to input sequence for next step
+                # Single-token decode with KV cache
                 next_tensor = torch.tensor([[next_id]], dtype=torch.long)
-                input_ids = torch.cat([input_ids, next_tensor], dim=1)
+                logits = self.forward_with_path(next_tensor, layer_path,
+                                                cache=cache,
+                                                past_len=current_past_len)
+                current_past_len += 1
 
                 # Check string stop conditions
                 partial = self._decode(generated_ids)

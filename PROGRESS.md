@@ -372,6 +372,8 @@
 [02:00] STATUS: Adapter generates correct output in Python REPL. Sweep runner needs GPU instance test with debug logging to confirm direct-call path is taken.
 
 ## KV Cache Bad Alloc Fix
-[--:--] DONE: CRITICAL FIX — forward_with_path always passes cache=None (duplicate layers wrote same KV cache slot twice → std::bad_alloc in ext_c.q_attn_forward_1)
-[--:--] DONE: generate_short rewritten to pass full accumulated sequence each step (no KV cache). O(n*seq_len) but safe for any layer path.
-[--:--] DONE: Removed use_cache/past_len params from forward_with_path (cache=None is the only correct option for circuit analysis)
+[--:--] DONE: CRITICAL FIX v1 — forward_with_path cache=None (reverted, see v2)
+[--:--] DONE: CRITICAL FIX v2 — fresh ExLlamaV2Cache per generate_short() call (per ExLlamaV2 PR #275 by dnhkng)
+[--:--] DONE: forward_with_path accepts explicit cache param (caller controls lifecycle)
+[--:--] DONE: generate_short creates fresh cache (max_seq_len=512) each call — empty slots, no stale KV entries, O(n) autoregressive decode restored
+[--:--] DONE: get_logprobs / forward_with_hooks still use cache=None (single-pass, no caching needed)
