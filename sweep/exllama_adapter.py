@@ -207,6 +207,12 @@ class ExLlamaV2LayerAdapter:
                cache.current_seq_len for past_len (we manage it in
                generate_short). Caller must set current_seq_len before
                calling this method.
+
+        Creates a fresh Params object for EVERY module call. Params
+        lazily caches attn_mask, past_lens_tensor, block_diag_mask,
+        and moves position_offsets in-place — reusing one Params across
+        48+ layer calls accumulates stale GPU tensors that eventually
+        cause std::bad_alloc in ext_c.q_attn_forward_1.
         """
         from exllamav2.attn import ExLlamaV2Attention
 
@@ -215,26 +221,28 @@ class ExLlamaV2LayerAdapter:
         # embeddings (sin/cos tables).
         past_len = cache.current_seq_len if cache is not None else 0
         batch_size, seq_len = input_ids.shape
-        attn_params = ExLlamaV2Attention.Params(batch_size, seq_len, past_len)
+
+        def _fresh_params():
+            return ExLlamaV2Attention.Params(batch_size, seq_len, past_len)
 
         # Embedding
         x = input_ids
         for module in self._pre_modules:
-            x = self._run_module(module, x, cache, attn_params, past_len)
+            x = self._run_module(module, x, cache, _fresh_params(), past_len)
 
         # Transformer layers in custom order
         for layer_idx in layer_path:
             layer = self._layer_modules[layer_idx]
             if self._moe_mode:
                 attn, mlp = layer
-                x = self._run_module(attn, x, cache, attn_params, past_len)
-                x = self._run_module(mlp, x, cache, attn_params, past_len)
+                x = self._run_module(attn, x, cache, _fresh_params(), past_len)
+                x = self._run_module(mlp, x, cache, _fresh_params(), past_len)
             else:
-                x = self._run_module(layer, x, cache, attn_params, past_len)
+                x = self._run_module(layer, x, cache, _fresh_params(), past_len)
 
         # Post-layer modules (norm + lm_head)
         for module in self._post_modules:
-            x = self._run_module(module, x, cache, attn_params, past_len)
+            x = self._run_module(module, x, cache, _fresh_params(), past_len)
 
         return x
 
@@ -383,11 +391,13 @@ class ExLlamaV2LayerAdapter:
             input_ids = input_ids.unsqueeze(0)
 
         batch_size, seq_len = input_ids.shape
-        attn_params = ExLlamaV2Attention.Params(batch_size, seq_len, 0)
+
+        def _fresh_params():
+            return ExLlamaV2Attention.Params(batch_size, seq_len, 0)
 
         x = input_ids
         for module in self._pre_modules:
-            x = self._run_module(module, x, None, attn_params, 0)
+            x = self._run_module(module, x, None, _fresh_params(), 0)
 
         if hook_fn:
             hook_fn(-1, -1, x.detach().clone())
@@ -396,10 +406,10 @@ class ExLlamaV2LayerAdapter:
             layer = self._layer_modules[layer_idx]
             if self._moe_mode:
                 attn, mlp = layer
-                x = self._run_module(attn, x, None, attn_params, 0)
-                x = self._run_module(mlp, x, None, attn_params, 0)
+                x = self._run_module(attn, x, None, _fresh_params(), 0)
+                x = self._run_module(mlp, x, None, _fresh_params(), 0)
             else:
-                x = self._run_module(layer, x, None, attn_params, 0)
+                x = self._run_module(layer, x, None, _fresh_params(), 0)
             if hook_fn:
                 hook_fn(k, layer_idx, x.detach().clone())
 
@@ -414,10 +424,12 @@ class ExLlamaV2LayerAdapter:
             h = h.unsqueeze(0)
 
         batch_size, seq_len = h.shape[0], h.shape[1]
-        attn_params = ExLlamaV2Attention.Params(batch_size, seq_len, 0)
+
+        def _fresh_params():
+            return ExLlamaV2Attention.Params(batch_size, seq_len, 0)
 
         for module in self._post_modules:
-            h = self._run_module(module, h, None, attn_params, 0)
+            h = self._run_module(module, h, None, _fresh_params(), 0)
 
         logits = h[0, -1, :].float()
         probs = torch.softmax(logits, dim=-1)
