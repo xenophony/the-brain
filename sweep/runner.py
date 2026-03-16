@@ -142,6 +142,7 @@ class SweepRunner:
             probe = get_probe(probe_name)
             if self.config.full_items:
                 probe.max_items = None
+            probe.log_responses = True  # capture responses for failure review
             if is_gpu:
                 # Direct call — no threading for GPU adapters (CUDA not thread-safe)
                 print(f"  [{probe_name}] direct call (GPU adapter)")
@@ -165,6 +166,12 @@ class SweepRunner:
                     scores[f"{probe_name}_easy"] = result["easy_score"]
                 if "hard_score" in result:
                     scores[f"{probe_name}_hard"] = result["hard_score"]
+                # Log failed items for post-hoc scoring review
+                if "item_results" in result:
+                    failures = [r for r in result["item_results"]
+                                if r.get("score", 1.0) == 0.0]
+                    if failures:
+                        scores[f"_failures_{probe_name}"] = failures
             else:
                 scores[probe_name] = result
 
