@@ -253,19 +253,20 @@ class ExLlamaV2LayerAdapter:
 
     def generate_short(self, prompt: str, max_new_tokens: int = 20,
                        temperature: float = 0.0) -> str:
-        """Generate with KV cache. We manage cache.current_seq_len ourselves.
+        """Generate with fresh KV cache per call.
 
-        Attention reads past_len from cache.current_seq_len (ignores
-        the parameter). So we set it before each forward call:
-          - Before prefill: current_seq_len = 0
+        Creates a fresh cache each call to prevent accumulated C
+        extension state from causing std::bad_alloc after ~24 calls.
+        Old cache is explicitly deleted first so only one exists.
+
+        We manage cache.current_seq_len ourselves:
+          - Fresh cache starts at 0
           - After prefill: current_seq_len = prompt_len
           - After each decode step: current_seq_len += 1
-
-        For duplicate layers: same cache slot is overwritten (second
-        execution replaces first). Semantically imperfect but does not
-        crash and preserves relative scoring for the sweep.
         """
         import re
+        import gc
+        from exllamav2.cache import ExLlamaV2Cache
 
         if "<|im_start|>" not in prompt:
             prompt = self._CHAT_TEMPLATE_NO_THINK.format(prompt=prompt)
@@ -274,14 +275,18 @@ class ExLlamaV2LayerAdapter:
         layer_path = self._layer_path or list(range(self.num_layers))
         generated_ids = []
 
-        # Reset cache and reclaim fragmented CUDA memory.
-        # Without empty_cache(), ~18K attention forward calls per probe
-        # fragment CUDA memory until q_attn_forward_1 can't allocate.
-        self._cache.reset()
+        # Fresh cache each call — prevents C extension state accumulation.
+        # Delete old cache first so only one exists (no OOM).
+        del self._cache
+        gc.collect()
         torch.cuda.empty_cache()
+        self._cache = ExLlamaV2Cache(
+            self._model, batch_size=1,
+            max_seq_len=self.cache_size_tokens, lazy=False,
+        )
 
         with torch.inference_mode():
-            # Prefill: cache.current_seq_len is 0 (set by reset)
+            # Prefill: cache.current_seq_len is 0 (fresh cache)
             logits = self.forward_with_path(input_ids, layer_path,
                                             cache=self._cache)
             # Advance current_seq_len past the prompt tokens
