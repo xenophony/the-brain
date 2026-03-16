@@ -292,6 +292,10 @@ class ExLlamaV2LayerAdapter:
 
         # Reuse persistent cache — just reset seq position.
         # No del/gc/empty_cache: avoids CUDA heap fragmentation.
+        stats = torch.cuda.memory_stats()
+        retries = stats.get('num_alloc_retries', 0)
+        allocated = torch.cuda.memory_allocated() / 1e9
+        print(f"DEBUG mem: {allocated:.2f}GB allocated, {retries} alloc_retries")
         self._cache.reset()
 
         with torch.inference_mode():
