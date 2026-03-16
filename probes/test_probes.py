@@ -569,6 +569,92 @@ class TestBuildOptimizedPath:
         assert 11 in path
 
 
+class TestImplicationProbe:
+    def test_perfect_score(self, perfect_model):
+        probe = get_probe("implication")
+        result = probe.run(perfect_model)
+        score = _extract_score(result)
+        assert score > 0.9, f"Implication probe perfect score too low: {score}"
+
+    def test_terrible_score(self, terrible_model):
+        probe = get_probe("implication")
+        result = probe.run(terrible_model)
+        score = _extract_score(result)
+        assert score < 0.3, f"Implication probe terrible score too high: {score}"
+
+    def test_scoring_function(self):
+        from probes.implication.probe import score_implication
+        assert score_implication("valid", "valid") == 1.0
+        assert score_implication("invalid", "invalid") == 1.0
+        assert score_implication("valid", "invalid") == 0.0
+        assert score_implication("invalid", "valid") == 0.0
+        assert score_implication("The argument is valid", "valid") == 1.0
+        assert score_implication("This is clearly invalid", "invalid") == 1.0
+        assert score_implication("banana", "valid") == 0.0
+        # "invalid" contains "valid" — check ordering
+        assert score_implication("invalid", "invalid") == 1.0
+
+
+class TestNegationProbe:
+    def test_perfect_score(self, perfect_model):
+        probe = get_probe("negation")
+        result = probe.run(perfect_model)
+        score = _extract_score(result)
+        assert score > 0.9, f"Negation probe perfect score too low: {score}"
+
+    def test_terrible_score(self, terrible_model):
+        probe = get_probe("negation")
+        result = probe.run(terrible_model)
+        score = _extract_score(result)
+        assert score < 0.3, f"Negation probe terrible score too high: {score}"
+
+    def test_scoring_function(self):
+        from probes.negation.probe import score_negation_item, score_negation_pair
+        assert score_negation_item("true", "true") == 1.0
+        assert score_negation_item("false", "false") == 1.0
+        assert score_negation_item("true", "false") == 0.0
+        assert score_negation_item("banana", "true") == 0.0
+        # Pair scoring: always-true strategy scores 0.5 for true/false pair
+        assert score_negation_pair("true", "true", "true", "false") == 0.5
+        # Perfect pair
+        assert score_negation_pair("true", "false", "true", "false") == 1.0
+
+
+class TestEstimationProbe:
+    def test_perfect_score(self, perfect_model):
+        probe = get_probe("estimation")
+        result = probe.run(perfect_model)
+        score = _extract_score(result)
+        assert score > 0.9, f"Estimation probe perfect score too low: {score}"
+
+    def test_terrible_score(self, terrible_model):
+        probe = get_probe("estimation")
+        result = probe.run(terrible_model)
+        score = _extract_score(result)
+        assert score < 0.3, f"Estimation probe terrible score too high: {score}"
+
+    def test_scoring_function(self):
+        from probes.estimation.probe import score_estimation, extract_number
+        # Exact match
+        assert score_estimation("86400", 86400) == 1.0
+        # With commas
+        assert score_estimation("86,400", 86400) == 1.0
+        # Close (within 0.1 log)
+        assert score_estimation("90000", 86400) == 1.0
+        # Exactly 1 order of magnitude off (log_error=1.0, hits <2.0 tier)
+        assert score_estimation("8640", 86400) == 0.2
+        # Within 1 order of magnitude (log_error≈0.7)
+        assert score_estimation("17000", 86400) == 0.4
+        # Way off
+        assert score_estimation("5", 86400) == 0.0
+        # No number
+        assert score_estimation("banana", 86400) == 0.0
+        # Number extraction
+        assert extract_number("approximately 86,400") == 86400.0
+        assert extract_number("about 9.3 x 10^7") == 93000000.0
+        assert extract_number("banana") is None
+
+
 class TestSafetyProbeScoringFunctions:
     def test_hallucination_hedge_detection(self):
         from probes.hallucination.probe import score_hallucination

@@ -5,9 +5,9 @@ Each probe can belong to multiple domains (e.g. sycophancy is both SOCIAL and SA
 Domains map loosely to brain region clusters identified via (i,j) sweep heatmaps.
 """
 
-REASONING = ["math", "planning", "counterfactual", "temporal"]
+REASONING = ["math", "planning", "counterfactual", "temporal", "implication", "estimation"]
 SOCIAL = ["eq", "sycophancy", "holistic"]
-LANGUAGE = ["language", "abstraction", "instruction"]
+LANGUAGE = ["language", "abstraction", "instruction", "negation"]
 SPATIAL = ["spatial"]
 MEMORY = ["factual", "metacognition"]
 EXECUTION = ["code", "tool_use"]

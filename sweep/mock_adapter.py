@@ -87,6 +87,15 @@ class MockAdapter:
             return "".join(letters[:4])
         if "def " in p or "function" in p:
             return "\n    return x"
+        # Implication probe
+        if "valid or invalid" in p:
+            return self._rng.choice(["valid", "invalid"])
+        # Negation probe
+        if "true or false" in p:
+            return self._rng.choice(["true", "false"])
+        # Estimation probe
+        if "how many" in p and "answer with only a number" in p:
+            return str(self._rng.randint(1, 1000000))
         if "answer with only" in p and "number" in p:
             return str(self._rng.randint(0, 1000))
         # Pong probes: random up/down/stay
@@ -381,6 +390,18 @@ class MockAdapter:
         if "shortest path from s to e" in p:
             return self._perfect_pathfinding(prompt)
 
+        # --- Implication probe ---
+        if "valid or invalid" in p and "premise" in p:
+            return self._perfect_implication(prompt)
+
+        # --- Negation probe ---
+        if "true or false" in p:
+            return self._perfect_negation(prompt)
+
+        # --- Estimation probe ---
+        if "how many" in p and "answer with only a number" in p:
+            return self._perfect_estimation(prompt)
+
         # --- Spatial Pong probes ---
         if "paddle" in p and "velocity" in p and "up, down, or stay" in p:
             return self._perfect_pong(prompt)
@@ -397,6 +418,75 @@ class MockAdapter:
     # ------------------------------------------------------------------ #
     #  Per-probe perfect response helpers                                  #
     # ------------------------------------------------------------------ #
+
+    def _perfect_implication(self, prompt: str) -> str:
+        """Return correct valid/invalid for syllogism prompts."""
+        p = prompt.lower()
+        # Map unique prompt fragments to answers
+        implication_map = {
+            "all dogs are warm-blooded": "valid",
+            "penguins can fly": "valid",
+            "all cats are pets": "invalid",
+            "no snakes are mammals": "valid",
+            "some roses are red": "invalid",
+            "the ground is wet": "valid",
+            "roses are flowers": "invalid",      # affirming consequent
+            "the moon is edible": "valid",        # valid from premises
+            "whales are fish": "invalid",         # affirming consequent
+            "john is not a doctor": "valid",      # modus tollens
+            "john is a criminal": "invalid",      # affirming consequent
+            "school is not cancelled": "invalid",  # denying antecedent
+        }
+        for fragment, answer in implication_map.items():
+            if fragment in p:
+                return answer
+        return "valid"
+
+    def _perfect_negation(self, prompt: str) -> str:
+        """Return correct true/false for negation prompts."""
+        p = prompt.lower()
+        # Longer/more-specific fragments first to avoid substring collisions
+        # (e.g. "not all swans" must match before "all swans")
+        negation_map = [
+            ("the earth does not orbit the sun", "false"),
+            ("the earth orbits the sun. true", "true"),
+            ("water does not boil at 100 degrees celsius", "false"),
+            ("water boils at 100 degrees celsius at sea level. true", "true"),
+            ("humans do not need oxygen to survive", "false"),
+            ("humans need oxygen to survive. true", "true"),
+            ("it is not untrue that the moon orbits", "true"),
+            ("it is true that the moon orbits", "true"),
+            ("it is false that lightning never strikes", "true"),
+            ("lightning never strikes the same place twice. true", "false"),
+            ("not all swans are white", "true"),
+            ("all swans are white. true", "false"),
+        ]
+        for fragment, answer in negation_map:
+            if fragment in p:
+                return answer
+        return "true"
+
+    def _perfect_estimation(self, prompt: str) -> str:
+        """Return correct numbers for Fermi estimation prompts."""
+        p = prompt.lower()
+        estimation_map = {
+            "seconds are in one day": "86400",
+            "bones are in the adult human": "206",
+            "countries are in the united nations": "193",
+            "miles is the earth from the sun": "93000000",
+            "teeth does an adult human": "32",
+            "minutes are in one week": "10080",
+            "piano tuners are in chicago": "225",
+            "words does the average person speak": "16000",
+            "golf balls fit in a school bus": "500000",
+            "gas stations are in the united states": "150000",
+            "tennis balls fit in this room": "250000",
+            "flights take off worldwide each day": "100000",
+        }
+        for fragment, answer in estimation_map.items():
+            if fragment in p:
+                return answer
+        return "1000"
 
     def _perfect_eq(self, prompt: str) -> str:
         """Return expected digit for EQ scenarios based on prompt content."""

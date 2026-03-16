@@ -59,6 +59,7 @@ ALL_PROBES = [
     "holistic", "planning", "instruction", "hallucination", "sycophancy",
     "consistency", "temporal", "metacognition", "counterfactual",
     "abstraction", "noise_robustness",
+    "implication", "negation", "estimation",
 ]
 
 OUTPUT_DIR = Path(__file__).parent.parent / "results" / "baselines"
@@ -506,6 +507,11 @@ def main():
         help="Append /no_think to prompts (matches local sweep mode). "
              "Results saved to separate files (*_nothink.json)",
     )
+    parser.add_argument(
+        "--subset", type=int, default=None, metavar="N",
+        help="Run only N total items per probe (N//2 easy + N//2 hard). "
+             "Useful for quick smoke tests.",
+    )
     args = parser.parse_args()
 
     models = list(MODEL_REGISTRY.keys()) if "all" in args.models else args.models
@@ -518,13 +524,40 @@ def main():
         print(f"Warning: unknown probes {bad}, skipping them")
         probes = [p for p in probes if p in available]
 
-    results = run_baselines(
-        model_names=models,
-        probe_names=probes,
-        dry_run=args.dry_run,
-        resume=not args.no_resume,
-        no_think=args.no_think,
-    )
+    # --- Subset slicing: temporarily reduce probe item counts ----------
+    _originals = {}
+    if args.subset is not None and args.subset > 0:
+        import importlib
+        half = max(args.subset // 2, 1)
+        for probe_name in probes:
+            try:
+                mod = importlib.import_module(f"probes.{probe_name}.probe")
+            except ImportError:
+                continue
+            saved = {}
+            for attr in ("EASY_ITEMS", "HARD_ITEMS", "EASY_PAIRS", "HARD_PAIRS"):
+                val = getattr(mod, attr, None)
+                if val is not None and hasattr(val, "__len__"):
+                    saved[attr] = list(val)
+                    setattr(mod, attr, val[:half])
+            if saved:
+                _originals[probe_name] = (mod, saved)
+        print(f"Subset mode: limiting each probe to ~{args.subset} items "
+              f"({half} easy + {half} hard)")
+
+    try:
+        results = run_baselines(
+            model_names=models,
+            probe_names=probes,
+            dry_run=args.dry_run,
+            resume=not args.no_resume,
+            no_think=args.no_think,
+        )
+    finally:
+        # Restore original item lists
+        for probe_name, (mod, saved) in _originals.items():
+            for attr, original_val in saved.items():
+                setattr(mod, attr, original_val)
 
     # Auto-generate calibration report after real runs
     if results and not args.dry_run:
