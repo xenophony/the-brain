@@ -45,6 +45,13 @@ class ExLlamaV2LayerAdapter:
         self._config = ExLlamaV2Config(self.model_path)
         self._config.arch_compat_overrides()
         self._config.max_seq_len = self.max_seq_len
+        # Disable CUDA graph caching. ExLlamaV2 caches CUDA graphs keyed
+        # by (q_len, batch_size) in QAttn.graph_map. Graphs hardcode tensor
+        # memory addresses at capture time. Our sweep calls generate_short()
+        # hundreds of times with fresh tensor allocations — replaying a
+        # cached graph writes to stale addresses, causing std::bad_alloc
+        # in ext_c.q_attn_forward_1 after ~30 calls.
+        self._config.no_graphs = True
 
         # ---- Model ----
         self._model = ExLlamaV2(self._config)
@@ -287,11 +294,20 @@ class ExLlamaV2LayerAdapter:
         stats = torch.cuda.memory_stats()
         retries = stats.get('num_alloc_retries', 0)
         allocated = torch.cuda.memory_allocated() / 1e9
-        print(f"DEBUG mem: {allocated:.2f}GB allocated, {retries} alloc_retries")
+
+        # Track call count and cache state for debugging
+        if not hasattr(self, '_call_count'):
+            self._call_count = 0
+        self._call_count += 1
+        print(f"DEBUG call#{self._call_count}: "
+              f"cache.current_seq_len={self._cache.current_seq_len}, "
+              f"{allocated:.2f}GB allocated, {retries} alloc_retries")
 
         # Reuse persistent cache — just reset seq position.
         # No del/gc/empty_cache: avoids CUDA heap fragmentation.
         self._cache.reset()
+        print(f"DEBUG call#{self._call_count}: after reset, "
+              f"cache.current_seq_len={self._cache.current_seq_len}")
 
         with torch.inference_mode():
             # Prefill: cache.current_seq_len is 0 (fresh cache)
