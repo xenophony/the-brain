@@ -244,14 +244,8 @@ class ExLlamaV2LayerAdapter:
 
     def generate_short(self, prompt: str, max_new_tokens: int = 20,
                        temperature: float = 0.0) -> str:
-        """Generate short completion with fresh KV cache per call.
-
-        A fresh cache is created each call so that duplicate layers in
-        the path never hit stale cache slots (the cause of bad_alloc).
-        Uses O(n) autoregressive decoding via KV cache.
-        """
+        """Generate short completion. Reuses self._cache, reset each call."""
         import re
-        from exllamav2.cache import ExLlamaV2Cache
 
         if "<|im_start|>" not in prompt:
             prompt = self._CHAT_TEMPLATE_NO_THINK.format(prompt=prompt)
@@ -260,49 +254,42 @@ class ExLlamaV2LayerAdapter:
         layer_path = self._layer_path or list(range(self.num_layers))
         generated_ids = []
 
-        # Fresh cache per call — empty slots, no stale KV entries
-        cache = ExLlamaV2Cache(
-            self._model, batch_size=1,
-            max_seq_len=512, lazy=False,
-        )
+        # Reset the single persistent cache — no allocation, just zeroes
+        self._cache.reset()
 
-        try:
-            with torch.inference_mode():
-                # Prefill: process full prompt
-                logits = self.forward_with_path(input_ids, layer_path,
-                                                cache=cache, past_len=0)
-                current_past_len = input_ids.shape[1]
+        with torch.inference_mode():
+            # Prefill: process full prompt
+            logits = self.forward_with_path(input_ids, layer_path,
+                                            cache=self._cache, past_len=0)
+            current_past_len = input_ids.shape[1]
 
-                for _ in range(max_new_tokens):
-                    next_logits = logits[0, -1, :].float()
+            for _ in range(max_new_tokens):
+                next_logits = logits[0, -1, :].float()
 
-                    if temperature <= 0.0 or temperature < 1e-7:
-                        next_id = next_logits.argmax().item()
-                    else:
-                        probs = torch.softmax(next_logits / temperature, dim=-1)
-                        next_id = torch.multinomial(probs, 1).item()
+                if temperature <= 0.0 or temperature < 1e-7:
+                    next_id = next_logits.argmax().item()
+                else:
+                    probs = torch.softmax(next_logits / temperature, dim=-1)
+                    next_id = torch.multinomial(probs, 1).item()
 
-                    if next_id in self._eos_token_ids:
-                        break
+                if next_id in self._eos_token_ids:
+                    break
 
-                    generated_ids.append(next_id)
+                generated_ids.append(next_id)
 
-                    # Single-token decode with KV cache
-                    next_tensor = torch.tensor([[next_id]], dtype=torch.long)
-                    logits = self.forward_with_path(next_tensor, layer_path,
-                                                    cache=cache,
-                                                    past_len=current_past_len)
-                    current_past_len += 1
+                # Single-token decode with KV cache
+                next_tensor = torch.tensor([[next_id]], dtype=torch.long)
+                logits = self.forward_with_path(next_tensor, layer_path,
+                                                cache=self._cache,
+                                                past_len=current_past_len)
+                current_past_len += 1
 
-                    # Check string stop conditions
-                    partial = self._decode(generated_ids)
-                    if isinstance(partial, list):
-                        partial = ''.join(partial)
-                    if "<|im_end|>" in partial:
-                        break
-        finally:
-            del cache
-            torch.cuda.empty_cache()
+                # Check string stop conditions
+                partial = self._decode(generated_ids)
+                if isinstance(partial, list):
+                    partial = ''.join(partial)
+                if "<|im_end|>" in partial:
+                    break
 
         if not generated_ids:
             return ""
