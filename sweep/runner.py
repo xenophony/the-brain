@@ -135,12 +135,13 @@ class SweepRunner:
         timeout = self.config.timeout_seconds
 
         # Detect GPU adapter — CUDA ops cannot run in non-main threads
-        is_gpu = hasattr(self.model, '_model') and not isinstance(self.model, type(None))
+        is_gpu = hasattr(self.model, '_model') and self.model._model is not None
 
         for probe_name in self.config.probe_names:
             probe = get_probe(probe_name)
             if is_gpu:
                 # Direct call — no threading for GPU adapters (CUDA not thread-safe)
+                print(f"  [{probe_name}] direct call (GPU adapter)")
                 try:
                     result = probe.run(self.model)
                 except Exception as e:

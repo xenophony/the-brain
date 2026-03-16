@@ -191,6 +191,32 @@ These probes serve a dual purpose:
 These findings should be documented separately from performance optimization.
 They have different implications and different audiences.
 
+## GPU and Device Requirements — CRITICAL
+
+ExLlamaV2 loads model weights across CPU and GPU:
+- Embedding layer: CPU (device_idx=-1) — this is by design
+- Transformer layers: GPU cuda:0 (device_idx=0)
+- Post-modules (norm, lm_head): GPU cuda:0
+
+Rules that must NEVER be violated:
+1. NEVER move tensors to CPU to fix a CUDA error — fix by ensuring
+   the OTHER tensor is on the correct device instead
+2. ExLlamaV2Tokenizer.encode() returns CPU tensors — input_ids start
+   on CPU, which is correct because embedding runs on CPU
+3. Hidden states move from CPU to GPU automatically after embedding
+   via _run_module() which checks module.device_idx
+4. ALL tensors created with torch.tensor() in decode loops must NOT
+   be forced to GPU — they go through embedding (CPU) first
+5. CUDA operations cannot run in non-main threads — never use
+   threading.Thread for GPU operations. Sweep runner must call
+   probe.run() directly for GPU adapters (check: hasattr(model, '_model'))
+6. self._device reflects the transformer layer device (cuda:0),
+   NOT the embedding device
+
+When you see "Expected all tensors to be on the same device":
+- CORRECT fix: check which device the MODULE expects, move input to match
+- WRONG fix: force everything to one device
+
 ## Common Failure Modes to Watch For
 - ExLlamaV2 cache not reset between configs → stale KV cache corrupts results
 - Probe returning NaN → scoring function edge case, add try/except with 0.0 fallback
