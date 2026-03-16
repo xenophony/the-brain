@@ -290,24 +290,9 @@ class ExLlamaV2LayerAdapter:
         layer_path = self._layer_path or list(range(self.num_layers))
         generated_ids = []
 
-        # Memory stats for fragmentation diagnosis
-        stats = torch.cuda.memory_stats()
-        retries = stats.get('num_alloc_retries', 0)
-        allocated = torch.cuda.memory_allocated() / 1e9
-
-        # Track call count and cache state for debugging
-        if not hasattr(self, '_call_count'):
-            self._call_count = 0
-        self._call_count += 1
-        print(f"DEBUG call#{self._call_count}: "
-              f"cache.current_seq_len={self._cache.current_seq_len}, "
-              f"{allocated:.2f}GB allocated, {retries} alloc_retries")
-
         # Reuse persistent cache — just reset seq position.
         # No del/gc/empty_cache: avoids CUDA heap fragmentation.
         self._cache.reset()
-        print(f"DEBUG call#{self._call_count}: after reset, "
-              f"cache.current_seq_len={self._cache.current_seq_len}")
 
         with torch.inference_mode():
             # Prefill: cache.current_seq_len is 0 (fresh cache)
