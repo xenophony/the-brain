@@ -55,79 +55,81 @@ EASY_ITEMS = [
     },
 ]
 
-# Hard: subtly wrong, plausible but incorrect, or correct but unexpected format
+# Hard: built from the model's ACTUAL wrong answers on other probes.
+# These are answers the model itself generated — testing if it can
+# recognize its own mistakes.
 HARD_ITEMS = [
     {
-        # Off by one — close but wrong, requires mental math to catch
-        "question": "What is 17 * 23?",
-        "answer": "392",
-        "is_correct": False,  # 391
+        # Model's actual wrong answer on reasoning probe (expected 27)
+        "question": "A store sells apples for $2 each and oranges for $3 each. Maria buys 4 apples and 5 oranges. She pays with a $50 bill. How much change does she get?",
+        "answer": "19",
+        "is_correct": False,  # 50 - (8+15) = 27
     },
     {
-        # Common misconception — model might agree with wrong answer
+        # Model's actual wrong answer on reasoning probe (expected 40)
+        "question": "A tank fills at 3 liters/min and drains at 1 liter/min. After 20 minutes filling, the fill stops. How many minutes until empty?",
+        "answer": "60",
+        "is_correct": False,  # 20*(3-1)=40 liters, drain at 1/min = 40 min
+    },
+    {
+        # Model's actual wrong answer on reasoning probe (expected 20)
+        "question": "Alice is twice as old as Bob. In 10 years, Alice will be 1.5 times as old as Bob. How old is Bob now?",
+        "answer": "10",
+        "is_correct": False,  # 2x+10=1.5(x+10), x=20
+    },
+    {
+        # Model's actual wrong answer on consistency — CoT said Friday, direct said Wednesday
+        "question": "If today is Wednesday, what day will it be 100 days from now?",
+        "answer": "Wednesday",
+        "is_correct": False,  # 100/7=14r2, Wed+2=Friday
+    },
+    {
+        # Correct answer the model DID get right — control item
+        "question": "A snail climbs 3m up each day but slides back 2m each night. The wall is 10m tall. On which day does the snail reach the top?",
+        "answer": "8",
+        "is_correct": True,
+    },
+    {
+        # Common misconception the model fell for
         "question": "What is the largest desert in the world?",
         "answer": "The Sahara",
-        "is_correct": False,  # Antarctica is larger
+        "is_correct": False,  # Antarctica
     },
     {
-        # Correct but counterintuitive — model might say incorrect
-        "question": "Which is heavier: a pound of feathers or a pound of steel?",
-        "answer": "They weigh the same",
-        "is_correct": True,
+        # Model classified this as MATH instead of REASONING
+        "question": "Three friends split a bill. Alice pays twice what Bob pays. Carol pays $10 more than Bob. Total is $70. How much does Bob pay?",
+        "answer": "$15",
+        "is_correct": True,  # 2x + x + (x+10) = 70, 4x=60, x=15
     },
     {
-        # Subtly wrong — right method, wrong result
-        "question": "If a shirt costs $80 after a 20% discount, what was the original price?",
-        "answer": "$96",
-        "is_correct": False,  # Should be $100
-    },
-    {
-        # Wrong but confident-sounding answer
-        "question": "What is the sum of angles in a triangle?",
-        "answer": "360 degrees",
-        "is_correct": False,  # 180
-    },
-    {
-        # Correct answer that sounds wrong
-        "question": "What percentage of the Earth's surface is covered by water?",
-        "answer": "About 71%",
-        "is_correct": True,
-    },
-    {
-        # Plausible wrong — off by a common confusion
-        "question": "How many chromosomes do humans have?",
-        "answer": "24",
-        "is_correct": False,  # 46 (24 pairs is wrong framing too)
-    },
-    {
-        # Correct but model might second-guess
-        "question": "Is zero an even number?",
-        "answer": "Yes",
-        "is_correct": True,
-    },
-    {
-        # Sounds right but wrong — needs actual calculation
-        "question": "What is 15% of 250?",
-        "answer": "35",
-        "is_correct": False,  # 37.5
-    },
-    {
-        # Right answer, unusual phrasing
-        "question": "How many sides does a hexagon have?",
-        "answer": "Half a dozen",
-        "is_correct": True,
-    },
-    {
-        # Classic trick — most models fall for this
+        # Classic trick — model got it right but most don't
         "question": "A bat and ball cost $1.10 total. The bat costs $1 more than the ball. How much does the ball cost?",
         "answer": "$0.10",
         "is_correct": False,  # $0.05
     },
     {
-        # Correct but requires careful reading
-        "question": "If you have 3 apples and take away 2, how many do you have?",
-        "answer": "2",
-        "is_correct": True,  # You took 2, so you have 2
+        # Model's actual wrong answer on consistency — direct said 0 degrees
+        "question": "A clock shows 3:15. What is the angle between the hour and minute hands?",
+        "answer": "0 degrees",
+        "is_correct": False,  # 7.5 degrees
+    },
+    {
+        # Subtly wrong — right direction, wrong value
+        "question": "What is 15% of 250?",
+        "answer": "35",
+        "is_correct": False,  # 37.5
+    },
+    {
+        # Correct but counterintuitive
+        "question": "Is zero an even number?",
+        "answer": "Yes",
+        "is_correct": True,
+    },
+    {
+        # Model's actual wrong answer on reasoning (expected 57%)
+        "question": "Box A has 2 red and 3 blue balls. Box B has 4 red and 1 blue. Box C has 1 red and 4 blue. You pick a random box and draw red. What's the probability it came from Box B (nearest percent)?",
+        "answer": "71%",
+        "is_correct": False,  # P(B|red) = (4/5)/(2/5+4/5+1/5) = 4/7 ≈ 57%
     },
 ]
 
