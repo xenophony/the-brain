@@ -271,8 +271,8 @@ class ExLlamaV2LayerAdapter:
     # ------------------------------------------------------------------ #
 
     _CHAT_TEMPLATE_NO_THINK = (
-        "<|im_start|>user\n{prompt}<|im_end|>\n"
-        "<|im_start|>assistant\n<think>\n\n</think>\n\n"
+        "<|im_start|>user\n{prompt} /no_think<|im_end|>\n"
+        "<|im_start|>assistant\n"
     )
     _CHAT_TEMPLATE_THINK = (
         "<|im_start|>user\n{prompt}<|im_end|>\n"
