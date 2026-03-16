@@ -333,6 +333,21 @@ class ExLlamaV2LayerAdapter:
                 if "<|im_end|>" in partial:
                     break
 
+                # Force-close thinking: if model starts <think> block,
+                # inject </think> to cut it short and get the answer.
+                # The model sees a closed think block in context and
+                # proceeds directly to the answer.
+                if "<think>" in partial and "</think>" not in partial:
+                    close_ids = self._encode("</think>", add_bos=False)
+                    if close_ids.dim() == 2:
+                        close_ids = close_ids[0]
+                    for cid in close_ids.tolist():
+                        generated_ids.append(cid)
+                        next_tensor = torch.tensor([[cid]], dtype=torch.long)
+                        logits = self.forward_with_path(
+                            next_tensor, layer_path, cache=self._cache)
+                        self._cache.current_seq_len += 1
+
         if not generated_ids:
             return ""
 

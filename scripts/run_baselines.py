@@ -60,6 +60,7 @@ ALL_PROBES = [
     "consistency", "temporal", "metacognition", "counterfactual",
     "abstraction", "noise_robustness",
     "implication", "negation", "estimation",
+    "reasoning", "routing",
 ]
 
 OUTPUT_DIR = Path(__file__).parent.parent / "results" / "baselines"
