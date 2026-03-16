@@ -370,3 +370,8 @@
 [02:00] FIX: cache.reset() called before each generation to prevent KV contamination between configs.
 [02:00] CRITICAL RULE ADDED TO CLAUDE.md: Never move tensors to CPU to fix CUDA errors. ExLlamaV2 embedding on CPU is by design. Device flow: input(CPU) → embedding(CPU) → hidden→GPU → layers(GPU) → output(GPU).
 [02:00] STATUS: Adapter generates correct output in Python REPL. Sweep runner needs GPU instance test with debug logging to confirm direct-call path is taken.
+
+## KV Cache Bad Alloc Fix
+[--:--] DONE: CRITICAL FIX — forward_with_path always passes cache=None (duplicate layers wrote same KV cache slot twice → std::bad_alloc in ext_c.q_attn_forward_1)
+[--:--] DONE: generate_short rewritten to pass full accumulated sequence each step (no KV cache). O(n*seq_len) but safe for any layer path.
+[--:--] DONE: Removed use_cache/past_len params from forward_with_path (cache=None is the only correct option for circuit analysis)
