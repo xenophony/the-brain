@@ -377,5 +377,5 @@
 [--:--] DONE: forward_with_path accepts explicit cache param (caller controls lifecycle)
 [--:--] DONE: generate_short creates fresh cache (max_seq_len=512) each call — empty slots, no stale KV entries, O(n) autoregressive decode restored
 [--:--] DONE: get_logprobs / forward_with_hooks still use cache=None (single-pass, no caching needed)
-[--:--] DONE: CRITICAL FIX v3 — try/finally (reverted, see v4)
-[--:--] DONE: CRITICAL FIX v4 — Cache sized to num_layers*2 (96 slots for 48-layer model). forward_with_path remaps attn.layer_idx → execution position so duplicate layers get separate cache slots. Single self._cache with reset(), no allocation per call.
+[--:--] DONE: CRITICAL FIX v3-v4 — layer_idx remapping (FAILED — attn ignores past_len param)
+[--:--] DONE: CRITICAL FIX v5 — No KV cache at all. Read ExLlamaV2 attn.py source: attention unconditionally reads cache.current_seq_len, ignores past_len parameter. Cannot safely manage cache with duplicate layers. Fix: cache=None everywhere, full sequence each decode step. O(n²) but ≤2s/question for 20 tokens. No cache allocation, no cache state, no bad_alloc.

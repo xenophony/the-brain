@@ -128,16 +128,13 @@ class ExLlamaV2LayerAdapter:
                 f"Module types: {[type(m).__name__ for m in all_modules]}"
             )
 
-        # ---- Cache ----
-        # Allocate 2x layer slots so duplicate-layer paths fit.
-        # ExLlamaV2Cache reads num_hidden_layers from model.config.
-        orig_num_layers = self._config.num_hidden_layers
-        self._config.num_hidden_layers = self.num_layers * 2
-        self._cache = ExLlamaV2Cache(
-            self._model, batch_size=1,
-            max_seq_len=self.cache_size_tokens, lazy=False,
-        )
-        self._config.num_hidden_layers = orig_num_layers
+        # ---- No KV cache ----
+        # ExLlamaV2's attention ignores the past_len parameter and always
+        # reads cache.current_seq_len instead. Combined with duplicate
+        # layers writing to the same cache slot, KV caching is unusable
+        # for custom layer paths. We pass cache=None everywhere and
+        # feed the full accumulated sequence each decode step instead.
+        # O(n²) for max_new_tokens steps, but for ≤20 tokens it's fast.
 
         # ---- Device ----
         # ExLlamaV2 modules have device_idx attribute (int >= 0 for CUDA)
@@ -197,55 +194,36 @@ class ExLlamaV2LayerAdapter:
 
     def forward_with_path(
         self, input_ids: torch.Tensor, layer_path: list[int],
-        cache=None, past_len: int = 0,
     ) -> torch.Tensor:
-        """Forward pass with custom layer path.
+        """Forward pass with custom layer path. Always cache=None.
 
-        When cache is provided, each attention module's layer_idx is
-        temporarily remapped to its execution position (0, 1, 2, ...)
-        so that duplicate layers get separate cache slots instead of
-        colliding on the same slot.
-
-        Cache must have >= len(layer_path) layer slots (we allocate
-        num_layers * 2 in __init__).
+        ExLlamaV2 attention ignores the past_len parameter and reads
+        cache.current_seq_len instead, which we cannot safely manage
+        with duplicate layers. So we never use the KV cache here.
         """
         from exllamav2.attn import ExLlamaV2Attention
 
         batch_size, seq_len = input_ids.shape
-        attn_params = ExLlamaV2Attention.Params(batch_size, seq_len, past_len)
+        attn_params = ExLlamaV2Attention.Params(batch_size, seq_len, 0)
 
         # Embedding
         x = input_ids
         for module in self._pre_modules:
-            x = self._run_module(module, x, cache, attn_params, past_len)
+            x = self._run_module(module, x, None, attn_params, 0)
 
         # Transformer layers in custom order
-        for exec_pos, layer_idx in enumerate(layer_path):
+        for layer_idx in layer_path:
             layer = self._layer_modules[layer_idx]
             if self._moe_mode:
                 attn, mlp = layer
-                # Remap attention layer_idx → execution position for cache
-                if cache is not None:
-                    orig_idx = attn.layer_idx
-                    attn.layer_idx = exec_pos
-                x = self._run_module(attn, x, cache, attn_params, past_len)
-                if cache is not None:
-                    attn.layer_idx = orig_idx
-                x = self._run_module(mlp, x, cache, attn_params, past_len)
+                x = self._run_module(attn, x, None, attn_params, 0)
+                x = self._run_module(mlp, x, None, attn_params, 0)
             else:
-                # ParallelDecoder — find attention sub-module
-                if cache is not None:
-                    attn_sub = getattr(layer, 'attn', None)
-                    if attn_sub is not None and hasattr(attn_sub, 'layer_idx'):
-                        orig_idx = attn_sub.layer_idx
-                        attn_sub.layer_idx = exec_pos
-                x = self._run_module(layer, x, cache, attn_params, past_len)
-                if cache is not None and attn_sub is not None and hasattr(attn_sub, 'layer_idx'):
-                    attn_sub.layer_idx = orig_idx
+                x = self._run_module(layer, x, None, attn_params, 0)
 
         # Post-layer modules (norm + lm_head)
         for module in self._post_modules:
-            x = self._run_module(module, x, cache, attn_params, past_len)
+            x = self._run_module(module, x, None, attn_params, 0)
 
         return x
 
@@ -264,7 +242,11 @@ class ExLlamaV2LayerAdapter:
 
     def generate_short(self, prompt: str, max_new_tokens: int = 20,
                        temperature: float = 0.0) -> str:
-        """Generate short completion. Reuses self._cache, reset each call."""
+        """Generate short completion without KV cache.
+
+        Passes full accumulated sequence each decode step. O(n²) but
+        for max_new_tokens≤20 this is ~2s per question — acceptable.
+        """
         import re
 
         if "<|im_start|>" not in prompt:
@@ -274,16 +256,9 @@ class ExLlamaV2LayerAdapter:
         layer_path = self._layer_path or list(range(self.num_layers))
         generated_ids = []
 
-        # Reset the single persistent cache — no allocation, just zeroes
-        self._cache.reset()
-
         with torch.inference_mode():
-            # Prefill: process full prompt
-            logits = self.forward_with_path(input_ids, layer_path,
-                                            cache=self._cache, past_len=0)
-            current_past_len = input_ids.shape[1]
-
             for _ in range(max_new_tokens):
+                logits = self.forward_with_path(input_ids, layer_path)
                 next_logits = logits[0, -1, :].float()
 
                 if temperature <= 0.0 or temperature < 1e-7:
@@ -297,12 +272,9 @@ class ExLlamaV2LayerAdapter:
 
                 generated_ids.append(next_id)
 
-                # Single-token decode with KV cache
+                # Append token to full sequence for next step
                 next_tensor = torch.tensor([[next_id]], dtype=torch.long)
-                logits = self.forward_with_path(next_tensor, layer_path,
-                                                cache=self._cache,
-                                                past_len=current_past_len)
-                current_past_len += 1
+                input_ids = torch.cat([input_ids, next_tensor], dim=1)
 
                 # Check string stop conditions
                 partial = self._decode(generated_ids)
