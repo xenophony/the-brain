@@ -74,7 +74,7 @@ class NegationProbe(BaseProbe):
         hard_scores = []
         item_results = [] if self.log_responses else None
 
-        for difficulty, pairs in [("easy", EASY_PAIRS), ("hard", HARD_PAIRS)]:
+        for difficulty, pairs in [("easy", self._limit(EASY_PAIRS)), ("hard", self._limit(HARD_PAIRS))]:
             scores = easy_scores if difficulty == "easy" else hard_scores
             for pair in pairs:
                 pos_item = pair["positive"]

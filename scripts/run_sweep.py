@@ -55,6 +55,8 @@ def main():
                         help="Resume from existing checkpoint (skip completed configs)")
     parser.add_argument("--baseline-repeats", type=int, default=3,
                         help="Number of baseline runs for variance estimation (default: 3)")
+    parser.add_argument("--full", action="store_true",
+                        help="Run all probe items (disable max_items limit)")
 
     args = parser.parse_args()
     
@@ -118,6 +120,7 @@ def main():
         mode=args.mode,
         baseline_repeats=args.baseline_repeats,
         resume=args.resume,
+        full_items=args.full,
     )
 
     runner = SweepRunner(config, adapter_class=adapter_class)

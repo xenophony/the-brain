@@ -107,13 +107,13 @@ class HolisticProbe(BaseProbe):
 
     def run(self, model) -> dict:
         easy_scores = []
-        for item in EASY_ITEMS:
+        for item in self._limit(EASY_ITEMS):
             response = model.generate_short(item["prompt"], max_new_tokens=10, temperature=0.0)
             score = score_analogy(response, item["accept"])
             easy_scores.append(score)
 
         hard_scores = []
-        for item in HARD_ITEMS:
+        for item in self._limit(HARD_ITEMS):
             response = model.generate_short(item["prompt"], max_new_tokens=10, temperature=0.0)
             score = score_analogy(response, item["accept"])
             hard_scores.append(score)

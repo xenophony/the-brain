@@ -37,6 +37,7 @@ class SweepConfig:
     mode: str = "duplicate"            # "duplicate", "skip", or "both"
     baseline_repeats: int = 3          # run baseline N times for variance estimation
     resume: bool = False               # resume from existing checkpoint
+    full_items: bool = False             # if True, probe.max_items = None (run all items)
 
 
 @dataclass
@@ -139,6 +140,8 @@ class SweepRunner:
 
         for probe_name in self.config.probe_names:
             probe = get_probe(probe_name)
+            if self.config.full_items:
+                probe.max_items = None
             if is_gpu:
                 # Direct call — no threading for GPU adapters (CUDA not thread-safe)
                 print(f"  [{probe_name}] direct call (GPU adapter)")

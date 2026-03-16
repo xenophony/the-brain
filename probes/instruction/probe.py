@@ -495,7 +495,7 @@ class InstructionProbe(BaseProbe):
 
     def run(self, model) -> dict:
         easy_scores = []
-        for scenario in EASY_ITEMS:
+        for scenario in self._limit(EASY_ITEMS):
             response = model.generate_short(
                 scenario["prompt"], max_new_tokens=20, temperature=0.0
             )
@@ -510,7 +510,7 @@ class InstructionProbe(BaseProbe):
             easy_scores.append(satisfied / n_constraints)
 
         hard_scores = []
-        for scenario in HARD_ITEMS:
+        for scenario in self._limit(HARD_ITEMS):
             response = model.generate_short(
                 scenario["prompt"], max_new_tokens=20, temperature=0.0
             )

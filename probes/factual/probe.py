@@ -181,13 +181,13 @@ class FactualProbe(BaseProbe):
 
     def run(self, model) -> dict:
         easy_scores = []
-        for q in EASY_ITEMS:
+        for q in self._limit(EASY_ITEMS):
             response = model.generate_short(q["prompt"], max_new_tokens=15, temperature=0.0)
             score = score_factual(response, q)
             easy_scores.append(score)
 
         hard_scores = []
-        for q in HARD_ITEMS:
+        for q in self._limit(HARD_ITEMS):
             response = model.generate_short(q["prompt"], max_new_tokens=15, temperature=0.0)
             score = score_factual(response, q)
             hard_scores.append(score)

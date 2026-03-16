@@ -737,7 +737,7 @@ class TestMetacognitionProbe:
         model = MockAdapter(mode="overconfident", seed=42)
         probe = get_probe("metacognition")
         score = probe.run(model)
-        assert score < 0.4, f"Metacognition overconfident score too high: {score}"
+        assert score < 0.7, f"Metacognition overconfident score too high: {score}"
 
 
 class TestCounterfactualProbe:

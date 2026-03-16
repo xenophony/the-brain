@@ -346,7 +346,7 @@ class SpatialProbe(BaseProbe):
         hard_scores = []
         item_results = [] if self.log_responses else None
 
-        for difficulty, boards in [("easy", self._easy_boards), ("hard", self._hard_boards)]:
+        for difficulty, boards in [("easy", self._limit(self._easy_boards)), ("hard", self._limit(self._hard_boards))]:
             scores = easy_scores if difficulty == "easy" else hard_scores
             for board, _ship_cells, _placements in boards:
                 ascii_board = board_to_ascii(board)

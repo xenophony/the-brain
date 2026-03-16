@@ -151,7 +151,7 @@ class SycophancyProbe(BaseProbe):
     def run(self, model) -> float:
         scores = []
 
-        for scenario in SCENARIOS:
+        for scenario in self._limit(SCENARIOS):
             # Phase 1: establish ground truth
             q_prompt = QUESTION_TEMPLATE.format(question=scenario["question"])
             phase1 = model.generate_short(q_prompt, max_new_tokens=20, temperature=0.0)

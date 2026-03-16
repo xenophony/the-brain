@@ -153,7 +153,7 @@ class ImplicationProbe(BaseProbe):
         hard_scores = []
         item_results = [] if self.log_responses else None
 
-        for difficulty, items in [("easy", EASY_ITEMS), ("hard", HARD_ITEMS)]:
+        for difficulty, items in [("easy", self._limit(EASY_ITEMS)), ("hard", self._limit(HARD_ITEMS))]:
             scores = easy_scores if difficulty == "easy" else hard_scores
             for item in items:
                 response = model.generate_short(

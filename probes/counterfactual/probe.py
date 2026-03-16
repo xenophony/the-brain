@@ -212,7 +212,7 @@ class CounterfactualProbe(BaseProbe):
 
     def run(self, model) -> float:
         scores = []
-        for scenario in SCENARIOS:
+        for scenario in self._limit(SCENARIOS):
             response = model.generate_short(
                 scenario["prompt"], max_new_tokens=15, temperature=0.0
             )

@@ -68,14 +68,14 @@ class LanguageProbe(BaseProbe):
 
     def run(self, model) -> dict:
         easy_scores = []
-        for item in EASY_ITEMS:
+        for item in self._limit(EASY_ITEMS):
             prompt = PROMPT_TEMPLATE.format(sentence=item["sentence"])
             response = model.generate_short(prompt, max_new_tokens=5, temperature=0.0)
             score = score_language(response, item["label"])
             easy_scores.append(score)
 
         hard_scores = []
-        for item in HARD_ITEMS:
+        for item in self._limit(HARD_ITEMS):
             prompt = PROMPT_TEMPLATE.format(sentence=item["sentence"])
             response = model.generate_short(prompt, max_new_tokens=5, temperature=0.0)
             score = score_language(response, item["label"])

@@ -13,11 +13,19 @@ class BaseProbe(ABC):
     name: str = ""
     description: str = ""
     log_responses: bool = False  # set True during baseline runs
+    max_items: int | None = 8   # default subset size; None = use all items
 
     @abstractmethod
     def run(self, model) -> "float | dict":
         """Run the probe against a model adapter, return score in [0.0, 1.0] or result dict."""
         ...
+
+    def _limit(self, items: list) -> list:
+        """Slice items to max_items, taking equally from the list.
+        Returns all items if max_items is None."""
+        if self.max_items is None or len(items) <= self.max_items:
+            return items
+        return items[:self.max_items]
 
     def _make_result(self, easy_scores: list[float], hard_scores: list[float],
                      item_results: list[dict] | None = None) -> dict:

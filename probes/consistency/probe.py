@@ -229,7 +229,7 @@ class ConsistencyProbe(BaseProbe):
         scores = []
         item_results = [] if self.log_responses else None
 
-        for scenario in SCENARIOS:
+        for scenario in self._limit(SCENARIOS):
             # Phase 1: reasoning
             r_prompt = REASONING_TEMPLATE.format(problem=scenario["problem"])
             reasoning = model.generate_short(r_prompt, max_new_tokens=500, temperature=0.0)

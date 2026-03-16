@@ -205,7 +205,7 @@ class ToolUseProbe(BaseProbe):
 
     def run(self, model) -> dict:
         easy_scores = []
-        for scenario in EASY_ITEMS:
+        for scenario in self._limit(EASY_ITEMS):
             tool_list = "\n".join(
                 f"  - {name}: {desc}" for name, desc in scenario["tools"].items()
             )
@@ -215,7 +215,7 @@ class ToolUseProbe(BaseProbe):
             easy_scores.append(score)
 
         hard_scores = []
-        for scenario in HARD_ITEMS:
+        for scenario in self._limit(HARD_ITEMS):
             tool_list = "\n".join(
                 f"  - {name}: {desc}" for name, desc in scenario["tools"].items()
             )

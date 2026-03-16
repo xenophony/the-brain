@@ -143,7 +143,7 @@ class NoiseRobustnessProbe(BaseProbe):
 
     def run(self, model) -> float:
         scores = []
-        for bq in BASE_QUESTIONS:
+        for bq in self._limit(BASE_QUESTIONS):
             results = []
             for version_key in ["A", "B", "C", "D"]:
                 prompt = bq["versions"][version_key]

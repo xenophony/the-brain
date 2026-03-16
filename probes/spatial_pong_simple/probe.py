@@ -173,7 +173,7 @@ class SpatialPongSimpleProbe(BaseProbe):
         hard_scores = []
         item_results = [] if self.log_responses else None
 
-        for item in EASY_ITEMS:
+        for item in self._limit(EASY_ITEMS):
             prompt = PROMPT_TEMPLATE.format(
                 ball_x=item["ball_x"], ball_y=item["ball_y"],
                 ball_dx=item["ball_dx"], ball_dy=item["ball_dy"],
@@ -190,7 +190,7 @@ class SpatialPongSimpleProbe(BaseProbe):
                     "score": score,
                 })
 
-        for item in HARD_ITEMS:
+        for item in self._limit(HARD_ITEMS):
             prompt = PROMPT_TEMPLATE.format(
                 ball_x=item["ball_x"], ball_y=item["ball_y"],
                 ball_dx=item["ball_dx"], ball_dy=item["ball_dy"],

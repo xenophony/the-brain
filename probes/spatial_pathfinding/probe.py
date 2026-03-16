@@ -267,7 +267,7 @@ class SpatialPathfindingProbe(BaseProbe):
         hard_scores = []
         item_results = [] if self.log_responses else None
 
-        for item in EASY_ITEMS:
+        for item in self._limit(EASY_ITEMS):
             prompt = PROMPT_TEMPLATE.format(grid=item["grid"])
             response = model.generate_short(prompt, max_new_tokens=10, temperature=0.0)
             score = score_pathfinding(response, item["answer"])
@@ -280,7 +280,7 @@ class SpatialPathfindingProbe(BaseProbe):
                     "score": score,
                 })
 
-        for item in HARD_ITEMS:
+        for item in self._limit(HARD_ITEMS):
             prompt = PROMPT_TEMPLATE.format(grid=item["grid"])
             response = model.generate_short(prompt, max_new_tokens=10, temperature=0.0)
             score = score_pathfinding(response, item["answer"])

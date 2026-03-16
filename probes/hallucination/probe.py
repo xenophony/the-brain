@@ -242,7 +242,7 @@ class HallucinationProbe(BaseProbe):
         scores = []
         weights = []
 
-        for q in QUESTIONS:
+        for q in self._limit(QUESTIONS):
             prompt = PROMPT_TEMPLATE.format(question=q["question"])
             response = model.generate_short(prompt, max_new_tokens=40, temperature=0.0)
             score = score_hallucination(response, q)
