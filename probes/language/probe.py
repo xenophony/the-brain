@@ -67,18 +67,17 @@ class LanguageProbe(BaseProbe):
     description = "Syntactic anomaly detection — Broca/Wernicke circuits"
 
     def run(self, model) -> dict:
-        easy_scores = []
-        for item in self._limit(EASY_ITEMS):
-            prompt = PROMPT_TEMPLATE.format(sentence=item["sentence"])
-            response = model.generate_short(prompt, max_new_tokens=5, temperature=0.0)
-            score = score_language(response, item["label"])
-            easy_scores.append(score)
+        easy_scores, easy_results = self._run_items(
+            model, self._limit(EASY_ITEMS),
+            prompt_fn=lambda item: PROMPT_TEMPLATE.format(sentence=item["sentence"]),
+            score_fn=lambda resp, item: score_language(resp, item["label"]),
+            max_new_tokens=5, difficulty="easy")
 
-        hard_scores = []
-        for item in self._limit(HARD_ITEMS):
-            prompt = PROMPT_TEMPLATE.format(sentence=item["sentence"])
-            response = model.generate_short(prompt, max_new_tokens=5, temperature=0.0)
-            score = score_language(response, item["label"])
-            hard_scores.append(score)
+        hard_scores, hard_results = self._run_items(
+            model, self._limit(HARD_ITEMS),
+            prompt_fn=lambda item: PROMPT_TEMPLATE.format(sentence=item["sentence"]),
+            score_fn=lambda resp, item: score_language(resp, item["label"]),
+            max_new_tokens=5, difficulty="hard")
 
-        return self._make_result(easy_scores, hard_scores)
+        item_results = (easy_results + hard_results) if self.log_responses else None
+        return self._make_result(easy_scores, hard_scores, item_results)

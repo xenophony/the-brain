@@ -40,6 +40,11 @@ class MockAdapter:
             return self._fragile_response(prompt)
         return self._random_response(prompt)
 
+    def generate_short_batch(self, prompts, max_new_tokens=20, temperature=0.0):
+        """Batched generation — sequential for mock, batched for real adapter."""
+        return [self.generate_short(p, max_new_tokens, temperature)
+                for p in prompts]
+
     def get_logprobs(self, prompt, target_tokens=None):
         import math as _math
         tokens = target_tokens or [str(i) for i in range(10)]

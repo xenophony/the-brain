@@ -194,42 +194,31 @@ class SpatialPongStrategicProbe(BaseProbe):
     description = "Pong motion planning with speed constraint - parietal + prefrontal executive"
 
     def run(self, model) -> dict:
-        easy_scores = []
-        hard_scores = []
-        item_results = [] if self.log_responses else None
-
-        for item in self._limit(EASY_ITEMS):
-            prompt = PROMPT_TEMPLATE_EASY.format(
+        def _prompt_easy(item):
+            return PROMPT_TEMPLATE_EASY.format(
                 ball_x=item["ball_x"], ball_y=item["ball_y"],
                 ball_dx=item["ball_dx"], ball_dy=item["ball_dy"],
                 paddle_x=PADDLE_X, paddle_cy=item["paddle_cy"],
                 paddle_speed=item["paddle_speed"])
-            response = model.generate_short(prompt, max_new_tokens=5, temperature=0.0)
-            score = score_pong_strategic(response, item["answer"])
-            easy_scores.append(score)
-            if item_results is not None:
-                item_results.append({
-                    "difficulty": "easy",
-                    "expected": item["answer"],
-                    "response": response[:200],
-                    "score": score,
-                })
 
-        for item in self._limit(HARD_ITEMS):
-            prompt = PROMPT_TEMPLATE_HARD.format(
+        def _prompt_hard(item):
+            return PROMPT_TEMPLATE_HARD.format(
                 ball_x=item["ball_x"], ball_y=item["ball_y"],
                 ball_dx=item["ball_dx"], ball_dy=item["ball_dy"],
                 paddle_x=PADDLE_X, paddle_cy=item["paddle_cy"],
                 paddle_speed=item["paddle_speed"])
-            response = model.generate_short(prompt, max_new_tokens=5, temperature=0.0)
-            score = score_pong_strategic(response, item["answer"])
-            hard_scores.append(score)
-            if item_results is not None:
-                item_results.append({
-                    "difficulty": "hard",
-                    "expected": item["answer"],
-                    "response": response[:200],
-                    "score": score,
-                })
 
+        easy_scores, easy_results = self._run_items(
+            model, self._limit(EASY_ITEMS),
+            prompt_fn=_prompt_easy,
+            score_fn=lambda resp, item: score_pong_strategic(resp, item["answer"]),
+            max_new_tokens=5, difficulty="easy")
+
+        hard_scores, hard_results = self._run_items(
+            model, self._limit(HARD_ITEMS),
+            prompt_fn=_prompt_hard,
+            score_fn=lambda resp, item: score_pong_strategic(resp, item["answer"]),
+            max_new_tokens=5, difficulty="hard")
+
+        item_results = (easy_results + hard_results) if self.log_responses else None
         return self._make_result(easy_scores, hard_scores, item_results)

@@ -20,6 +20,46 @@ class BaseProbe(ABC):
         """Run the probe against a model adapter, return score in [0.0, 1.0] or result dict."""
         ...
 
+    def _run_items(self, model, items: list, prompt_fn, score_fn,
+                   max_new_tokens: int = 20, temperature: float = 0.0,
+                   difficulty: str = "") -> tuple[list[float], list[dict]]:
+        """Run items with automatic batching when available.
+
+        Args:
+            model: adapter with generate_short (and optionally generate_short_batch)
+            items: list of item dicts
+            prompt_fn: callable(item) -> prompt string
+            score_fn: callable(response, item) -> float score
+            max_new_tokens: max tokens per response
+            temperature: sampling temperature
+            difficulty: label for item_results
+
+        Returns:
+            (scores, item_results) — item_results is [] if not log_responses
+        """
+        prompts = [prompt_fn(item) for item in items]
+
+        # Use batched generation if available
+        if hasattr(model, 'generate_short_batch') and len(prompts) > 1:
+            responses = model.generate_short_batch(
+                prompts, max_new_tokens, temperature)
+        else:
+            responses = [model.generate_short(p, max_new_tokens, temperature)
+                         for p in prompts]
+
+        scores = []
+        item_results = []
+        for item, response in zip(items, responses):
+            score = score_fn(response, item)
+            scores.append(score)
+            if self.log_responses:
+                item_results.append({
+                    "difficulty": difficulty,
+                    "response": response[:200] if response else "",
+                    "score": score,
+                })
+        return scores, item_results
+
     def _limit(self, items: list) -> list:
         """Slice items to max_items, taking equally from the list.
         Returns all items if max_items is None."""

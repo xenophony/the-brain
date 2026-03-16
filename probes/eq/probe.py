@@ -189,25 +189,17 @@ class EQProbe(BaseProbe):
     description = "Emotional intensity estimation — limbic system circuits"
 
     def run(self, model) -> dict:
-        easy_scores = []
-        hard_scores = []
-        item_results = [] if self.log_responses else None
+        easy_scores, easy_results = self._run_items(
+            model, self._limit(EASY_ITEMS),
+            prompt_fn=lambda item: item["prompt"],
+            score_fn=lambda resp, item: _eq_digit_score(resp, item["expected"]),
+            max_new_tokens=5, difficulty="easy")
 
-        for difficulty, items in [("easy", self._limit(EASY_ITEMS)), ("hard", self._limit(HARD_ITEMS))]:
-            scores = easy_scores if difficulty == "easy" else hard_scores
-            for scenario in items:
-                response = model.generate_short(
-                    scenario["prompt"], max_new_tokens=5, temperature=0.0
-                )
-                score = _eq_digit_score(response, scenario["expected"])
-                scores.append(score)
-                if item_results is not None:
-                    item_results.append({
-                        "difficulty": difficulty,
-                        "expected": scenario["expected"],
-                        "response": response[:200],
-                        "extracted": _extract_eq_digit(response),
-                        "score": score,
-                    })
+        hard_scores, hard_results = self._run_items(
+            model, self._limit(HARD_ITEMS),
+            prompt_fn=lambda item: item["prompt"],
+            score_fn=lambda resp, item: _eq_digit_score(resp, item["expected"]),
+            max_new_tokens=5, difficulty="hard")
 
+        item_results = (easy_results + hard_results) if self.log_responses else None
         return self._make_result(easy_scores, hard_scores, item_results)

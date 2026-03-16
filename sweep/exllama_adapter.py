@@ -22,10 +22,12 @@ class ExLlamaV2LayerAdapter:
         output = adapter.generate_short("prompt")
     """
 
-    def __init__(self, model_path: str, cache_size_tokens: int = 2048, max_seq_len: int = 2048):
+    def __init__(self, model_path: str, cache_size_tokens: int = 2048,
+                 max_seq_len: int = 2048, max_batch_size: int = 8):
         self.model_path = model_path
         self.cache_size_tokens = cache_size_tokens
         self.max_seq_len = max_seq_len
+        self.max_batch_size = max_batch_size
         self._layer_path: Optional[list[int]] = None
         self._model = None
         self._tokenizer = None
@@ -55,6 +57,7 @@ class ExLlamaV2LayerAdapter:
         # cached graph writes to stale addresses, causing std::bad_alloc
         # in ext_c.q_attn_forward_1 after ~30 calls.
         self._config.no_graphs = True
+        self._config.max_batch_size = self.max_batch_size
 
         # ---- Model ----
         self._model = ExLlamaV2(self._config)
@@ -165,6 +168,11 @@ class ExLlamaV2LayerAdapter:
         from exllamav2.cache import ExLlamaV2Cache
         self._cache = ExLlamaV2Cache(
             self._model, batch_size=1,
+            max_seq_len=self.cache_size_tokens, lazy=False,
+        )
+        # Batch cache for generate_short_batch()
+        self._batch_cache = ExLlamaV2Cache(
+            self._model, batch_size=self.max_batch_size,
             max_seq_len=self.cache_size_tokens, lazy=False,
         )
 
@@ -368,6 +376,180 @@ class ExLlamaV2LayerAdapter:
         output = re.sub(r'<think>.*?</think>', '', output, flags=re.DOTALL)
         output = output.strip().split('\n')[0]
         return output.strip()
+
+    def generate_short_batch(self, prompts: list[str],
+                             max_new_tokens: int = 20,
+                             temperature: float = 0.0) -> list[str]:
+        """Batched generation — amortizes weight loading across prompts.
+
+        Left-pads all prompts to the same length, runs batched prefill
+        and lockstep decode. Falls back to sequential for batch_size=1
+        or if batch exceeds max_batch_size.
+
+        All prompts in the batch use the same max_new_tokens and
+        temperature. Per-item EOS tracking masks out finished items.
+        """
+        import re
+
+        if len(prompts) <= 1:
+            return [self.generate_short(p, max_new_tokens, temperature)
+                    for p in prompts]
+
+        # Format prompts
+        formatted = []
+        for p in prompts:
+            if "<|im_start|>" not in p:
+                p = self._CHAT_TEMPLATE_NO_THINK.format(prompt=p)
+            formatted.append(p)
+
+        # Encode all prompts
+        encoded = [self._encode(p, add_bos=True) for p in formatted]
+        lengths = [e.shape[1] for e in encoded]
+        max_len = max(lengths)
+        batch_size = len(prompts)
+
+        # Process in chunks of max_batch_size
+        if batch_size > self.max_batch_size:
+            results = []
+            for start in range(0, batch_size, self.max_batch_size):
+                chunk = prompts[start:start + self.max_batch_size]
+                results.extend(self.generate_short_batch(
+                    chunk, max_new_tokens, temperature))
+            return results
+
+        # Left-pad to max_len. Pad token = 0 (embedding of pad token
+        # gets masked out by attention mask, so exact ID doesn't matter).
+        padded = torch.zeros((batch_size, max_len), dtype=torch.long)
+        for i, (enc, length) in enumerate(zip(encoded, lengths)):
+            padded[i, max_len - length:] = enc[0]
+
+        # Attention mask: -65504 for padded positions, 0.0 for real tokens.
+        # Pre-allocate for full context (prompt + max decode tokens).
+        total_ctx = max_len + max_new_tokens
+        input_mask = torch.zeros(
+            (batch_size, total_ctx), dtype=torch.float16,
+            device=self._device)
+        for i, length in enumerate(lengths):
+            pad_len = max_len - length
+            if pad_len > 0:
+                input_mask[i, :pad_len] = -65504.0
+
+        layer_path = self._layer_path or list(range(self.num_layers))
+
+        # Per-item state
+        all_generated: list[list[int]] = [[] for _ in range(batch_size)]
+        finished = [False] * batch_size
+
+        self._batch_cache.reset()
+
+        with torch.inference_mode():
+            from exllamav2.attn import ExLlamaV2Attention
+
+            # --- Prefill ---
+            past_len = 0
+            attn_params = ExLlamaV2Attention.Params(
+                batch_size, max_len, past_len,
+                input_mask=input_mask[:batch_size])
+
+            x = padded
+            for module in self._pre_modules:
+                x = self._run_module(
+                    module, x, self._batch_cache, attn_params, past_len)
+            for layer_idx in layer_path:
+                layer = self._layer_modules[layer_idx]
+                if self._moe_mode:
+                    attn, mlp = layer
+                    x = self._run_module(
+                        attn, x, self._batch_cache, attn_params, past_len)
+                    x = self._run_module(
+                        mlp, x, self._batch_cache, attn_params, past_len)
+                else:
+                    x = self._run_module(
+                        layer, x, self._batch_cache, attn_params, past_len)
+            for module in self._post_modules:
+                x = self._run_module(
+                    module, x, self._batch_cache, attn_params, past_len)
+            logits = x
+
+            self._batch_cache.current_seq_len = max_len
+
+            # --- Decode ---
+            for step in range(max_new_tokens):
+                # Sample next token per item
+                next_ids = []
+                for i in range(batch_size):
+                    if finished[i]:
+                        next_ids.append(0)  # pad for finished items
+                        continue
+                    item_logits = logits[i, -1, :].float()
+                    if temperature <= 0.0 or temperature < 1e-7:
+                        nid = item_logits.argmax().item()
+                    else:
+                        probs = torch.softmax(
+                            item_logits / temperature, dim=-1)
+                        nid = torch.multinomial(probs, 1).item()
+
+                    if nid in self._eos_token_ids:
+                        finished[i] = True
+                        next_ids.append(0)
+                    else:
+                        all_generated[i].append(nid)
+                        next_ids.append(nid)
+
+                if all(finished):
+                    break
+
+                # Batched decode step — shape (batch_size, 1)
+                next_tensor = torch.tensor(
+                    next_ids, dtype=torch.long).unsqueeze(1)
+
+                past_len = self._batch_cache.current_seq_len
+                attn_params = ExLlamaV2Attention.Params(
+                    batch_size, 1, past_len,
+                    input_mask=input_mask[:batch_size])
+
+                x = next_tensor
+                for module in self._pre_modules:
+                    x = self._run_module(
+                        module, x, self._batch_cache, attn_params, past_len)
+                for layer_idx in layer_path:
+                    layer = self._layer_modules[layer_idx]
+                    if self._moe_mode:
+                        attn, mlp = layer
+                        x = self._run_module(
+                            attn, x, self._batch_cache,
+                            attn_params, past_len)
+                        x = self._run_module(
+                            mlp, x, self._batch_cache,
+                            attn_params, past_len)
+                    else:
+                        x = self._run_module(
+                            layer, x, self._batch_cache,
+                            attn_params, past_len)
+                for module in self._post_modules:
+                    x = self._run_module(
+                        module, x, self._batch_cache, attn_params, past_len)
+                logits = x
+
+                self._batch_cache.current_seq_len += 1
+
+        # Decode results
+        results = []
+        for i in range(batch_size):
+            if not all_generated[i]:
+                results.append("")
+                continue
+            output = self._decode(all_generated[i])
+            if isinstance(output, list):
+                output = ''.join(output)
+            if "<|im_end|>" in output:
+                output = output.split("<|im_end|>")[0]
+            output = re.sub(
+                r'<think>.*?</think>', '', output, flags=re.DOTALL)
+            output = output.strip().split('\n')[0]
+            results.append(output.strip())
+
+        return results
 
     # ------------------------------------------------------------------ #
     #  Logprob interface                                                   #
