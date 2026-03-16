@@ -438,6 +438,8 @@ class ExLlamaV2LayerAdapter:
         # Per-item state
         all_generated: list[list[int]] = [[] for _ in range(batch_size)]
         finished = [False] * batch_size
+        # Per-item think close: queued close tokens to inject
+        think_close_queue: list[list[int]] = [[] for _ in range(batch_size)]
 
         self._batch_cache.reset()
 
@@ -474,12 +476,20 @@ class ExLlamaV2LayerAdapter:
 
             # --- Decode ---
             for step in range(max_new_tokens):
-                # Sample next token per item
+                # Sample next token per item, with think force-close
                 next_ids = []
                 for i in range(batch_size):
                     if finished[i]:
-                        next_ids.append(0)  # pad for finished items
+                        next_ids.append(0)
                         continue
+
+                    # Inject queued close tokens from previous think detection
+                    if think_close_queue[i]:
+                        cid = think_close_queue[i].pop(0)
+                        all_generated[i].append(cid)
+                        next_ids.append(cid)
+                        continue
+
                     item_logits = logits[i, -1, :].float()
                     if temperature <= 0.0 or temperature < 1e-7:
                         nid = item_logits.argmax().item()
@@ -491,6 +501,17 @@ class ExLlamaV2LayerAdapter:
                     if nid in self._eos_token_ids:
                         finished[i] = True
                         next_ids.append(0)
+                    elif (self._think_token_id is not None
+                          and nid == self._think_token_id
+                          and self._think_close_ids):
+                        # Think detected — inject close tokens
+                        all_generated[i].append(nid)
+                        close = list(self._think_close_ids)
+                        cid = close.pop(0)
+                        all_generated[i].append(cid)
+                        next_ids.append(cid)
+                        think_close_queue[i] = close  # remaining (if multi-token)
+                        self._think_close_total += 1
                     else:
                         all_generated[i].append(nid)
                         next_ids.append(nid)
