@@ -207,6 +207,7 @@ class SweepRunner:
         return {
             name: scores[name] - self.baseline_scores.get(name, 0.0)
             for name in scores
+            if isinstance(scores[name], (int, float))
         }
     
     def all_configs(self) -> list[tuple[int, int]]:
@@ -281,7 +282,12 @@ class SweepRunner:
             for s in all_scores:
                 all_keys.update(s.keys())
             for key in all_keys:
+                if key.startswith("_"):  # skip _failures_ and other metadata
+                    continue
                 values = [s.get(key, 0.0) for s in all_scores]
+                # Ensure all values are numeric (skip if any are dicts/lists)
+                if not all(isinstance(v, (int, float)) for v in values):
+                    continue
                 self.baseline_scores[key] = float(np.mean(values))
                 self.baseline_std[key] = float(np.std(values)) if n_repeats > 1 else 0.0
 
