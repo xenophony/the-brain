@@ -598,6 +598,93 @@ class ExLlamaV2LayerAdapter:
                 result[token_str] = float('-inf')
         return result
 
+    def get_logprobs_batch(self, prompts: list[str],
+                           target_tokens: Optional[list[str]] = None,
+                           ) -> list[dict[str, float]]:
+        """Batched logprobs — 1 forward pass for all prompts. No decode steps.
+
+        Returns list of dicts, one per prompt, same format as get_logprobs().
+        """
+        if len(prompts) <= 1:
+            return [self.get_logprobs(p, target_tokens) for p in prompts]
+
+        # Pre-resolve target token IDs once
+        target_ids = {}
+        if target_tokens:
+            for tok_str in target_tokens:
+                tok_enc = self._encode(tok_str, add_bos=False)
+                if tok_enc.shape[-1] >= 1:
+                    target_ids[tok_str] = tok_enc[0, 0].item()
+
+        # Encode and left-pad
+        encoded = [self._encode(p, add_bos=True) for p in prompts]
+        lengths = [e.shape[1] for e in encoded]
+        max_len = max(lengths)
+        batch_size = len(prompts)
+
+        # Process in chunks of max_batch_size
+        if batch_size > self.max_batch_size:
+            results = []
+            for start in range(0, batch_size, self.max_batch_size):
+                chunk = prompts[start:start + self.max_batch_size]
+                results.extend(self.get_logprobs_batch(chunk, target_tokens))
+            return results
+
+        padded = torch.zeros((batch_size, max_len), dtype=torch.long)
+        input_mask = torch.zeros(
+            (batch_size, max_len), dtype=torch.float16,
+            device=self._device)
+        for i, (enc, length) in enumerate(zip(encoded, lengths)):
+            padded[i, max_len - length:] = enc[0]
+            pad_len = max_len - length
+            if pad_len > 0:
+                input_mask[i, :pad_len] = -65504.0
+
+        layer_path = self._layer_path or list(range(self.num_layers))
+
+        with torch.inference_mode():
+            from exllamav2.attn import ExLlamaV2Attention
+
+            attn_params = ExLlamaV2Attention.Params(
+                batch_size, max_len, 0,
+                input_mask=input_mask[:batch_size])
+
+            # Single forward pass — no cache needed
+            x = padded
+            for module in self._pre_modules:
+                x = self._run_module(module, x, None, attn_params, 0)
+            for layer_idx in layer_path:
+                layer = self._layer_modules[layer_idx]
+                if self._moe_mode:
+                    attn, mlp = layer
+                    x = self._run_module(attn, x, None, attn_params, 0)
+                    x = self._run_module(mlp, x, None, attn_params, 0)
+                else:
+                    x = self._run_module(layer, x, None, attn_params, 0)
+            for module in self._post_modules:
+                x = self._run_module(module, x, None, attn_params, 0)
+
+        # Extract per-item logprobs from last token position
+        results = []
+        for i in range(batch_size):
+            last_logits = x[i, -1, :].float()
+            log_probs = torch.log_softmax(last_logits, dim=-1)
+
+            if target_tokens is None:
+                results.append({"raw_logits": last_logits})
+                continue
+
+            item_result = {}
+            for tok_str in target_tokens:
+                tid = target_ids.get(tok_str)
+                if tid is not None:
+                    item_result[tok_str] = log_probs[tid].item()
+                else:
+                    item_result[tok_str] = float('-inf')
+            results.append(item_result)
+
+        return results
+
     # ------------------------------------------------------------------ #
     #  Residual stream tracing                                             #
     # ------------------------------------------------------------------ #

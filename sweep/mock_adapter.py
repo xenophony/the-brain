@@ -45,6 +45,10 @@ class MockAdapter:
         return [self.generate_short(p, max_new_tokens, temperature)
                 for p in prompts]
 
+    def get_logprobs_batch(self, prompts, target_tokens=None):
+        """Batched logprobs — sequential for mock, batched for real adapter."""
+        return [self.get_logprobs(p, target_tokens) for p in prompts]
+
     def get_logprobs(self, prompt, target_tokens=None):
         import math as _math
         tokens = target_tokens or [str(i) for i in range(10)]

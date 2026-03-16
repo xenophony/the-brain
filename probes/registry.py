@@ -131,13 +131,16 @@ class BaseLogprobProbe(BaseProbe):
         hard_pcorrect = []
         item_results = []
 
-        for item in items:
-            prompt = item["prompt"] + " Answer with one word."
+        # Batch all logprob calls in one forward pass
+        prompts = [item["prompt"] + " Answer with one word." for item in items]
+        if hasattr(model, 'get_logprobs_batch') and len(prompts) > 1:
+            all_logprobs = model.get_logprobs_batch(prompts, choices)
+        else:
+            all_logprobs = [model.get_logprobs(p, choices) for p in prompts]
+
+        for item, logprobs in zip(items, all_logprobs):
             expected = item["answer"].lower()
             difficulty = item.get("difficulty", "hard")
-
-            # Get log probabilities for all choices
-            logprobs = model.get_logprobs(prompt, choices)
 
             # Convert log probs to probabilities
             probs = {}
