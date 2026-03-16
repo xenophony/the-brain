@@ -204,7 +204,7 @@ class SpatialPongStrategicProbe(BaseProbe):
                 ball_dx=item["ball_dx"], ball_dy=item["ball_dy"],
                 paddle_x=PADDLE_X, paddle_cy=item["paddle_cy"],
                 paddle_speed=item["paddle_speed"])
-            response = model.generate_short(prompt, max_new_tokens=60, temperature=0.0)
+            response = model.generate_short(prompt, max_new_tokens=5, temperature=0.0)
             score = score_pong_strategic(response, item["answer"])
             easy_scores.append(score)
             if item_results is not None:
@@ -221,7 +221,7 @@ class SpatialPongStrategicProbe(BaseProbe):
                 ball_dx=item["ball_dx"], ball_dy=item["ball_dy"],
                 paddle_x=PADDLE_X, paddle_cy=item["paddle_cy"],
                 paddle_speed=item["paddle_speed"])
-            response = model.generate_short(prompt, max_new_tokens=60, temperature=0.0)
+            response = model.generate_short(prompt, max_new_tokens=5, temperature=0.0)
             score = score_pong_strategic(response, item["answer"])
             hard_scores.append(score)
             if item_results is not None:
