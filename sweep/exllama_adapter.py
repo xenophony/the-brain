@@ -36,6 +36,9 @@ class ExLlamaV2LayerAdapter:
         self._eos_token_ids: list[int] = []
         self._device = torch.device("cuda:0")
         self._moe_mode = False
+        self._think_token_id: int | None = None
+        self._think_close_count = 0     # per generate_short call
+        self._think_close_total = 0     # accumulated, reset by runner
         self._load()
 
     def _load(self):
@@ -71,6 +74,23 @@ class ExLlamaV2LayerAdapter:
                 sid = self._tokenizer.single_id(special)
                 if sid is not None and sid not in self._eos_token_ids:
                     self._eos_token_ids.append(sid)
+            except Exception:
+                pass
+
+        # Detect <think> token ID for force-close (avoid per-token string decode)
+        try:
+            self._think_token_id = self._tokenizer.single_id("<think>")
+        except Exception:
+            self._think_token_id = None
+
+        # Pre-encode </think> for force-close injection
+        self._think_close_ids: list[int] = []
+        if self._think_token_id is not None:
+            try:
+                close_enc = self._tokenizer.encode("</think>", add_bos=False)
+                if close_enc.dim() == 2:
+                    close_enc = close_enc[0]
+                self._think_close_ids = close_enc.tolist()
             except Exception:
                 pass
 
@@ -215,41 +235,34 @@ class ExLlamaV2LayerAdapter:
                generate_short). Caller must set current_seq_len before
                calling this method.
 
-        Creates a fresh Params object for EVERY module call. Params
-        lazily caches attn_mask, past_lens_tensor, block_diag_mask,
-        and moves position_offsets in-place — reusing one Params across
-        48+ layer calls accumulates stale GPU tensors that eventually
-        cause std::bad_alloc in ext_c.q_attn_forward_1.
+        Single Params object reused across all modules. Safe because
+        config.no_graphs=True prevents CUDA graph caching (the original
+        cause of the bad_alloc that motivated per-module fresh Params).
         """
         from exllamav2.attn import ExLlamaV2Attention
 
-        # Attention reads past_len from cache.current_seq_len, not from
-        # attn_params. We still set attn_params.past_len for position
-        # embeddings (sin/cos tables).
         past_len = cache.current_seq_len if cache is not None else 0
         batch_size, seq_len = input_ids.shape
-
-        def _fresh_params():
-            return ExLlamaV2Attention.Params(batch_size, seq_len, past_len)
+        attn_params = ExLlamaV2Attention.Params(batch_size, seq_len, past_len)
 
         # Embedding
         x = input_ids
         for module in self._pre_modules:
-            x = self._run_module(module, x, cache, _fresh_params(), past_len)
+            x = self._run_module(module, x, cache, attn_params, past_len)
 
         # Transformer layers in custom order
         for layer_idx in layer_path:
             layer = self._layer_modules[layer_idx]
             if self._moe_mode:
                 attn, mlp = layer
-                x = self._run_module(attn, x, cache, _fresh_params(), past_len)
-                x = self._run_module(mlp, x, cache, _fresh_params(), past_len)
+                x = self._run_module(attn, x, cache, attn_params, past_len)
+                x = self._run_module(mlp, x, cache, attn_params, past_len)
             else:
-                x = self._run_module(layer, x, cache, _fresh_params(), past_len)
+                x = self._run_module(layer, x, cache, attn_params, past_len)
 
         # Post-layer modules (norm + lm_head)
         for module in self._post_modules:
-            x = self._run_module(module, x, cache, _fresh_params(), past_len)
+            x = self._run_module(module, x, cache, attn_params, past_len)
 
         return x
 
@@ -291,6 +304,7 @@ class ExLlamaV2LayerAdapter:
         generated_ids = []
 
         self._cache.reset()
+        self._think_close_count = 0
 
         with torch.inference_mode():
             # Prefill: cache.current_seq_len is 0 (fresh cache)
@@ -298,6 +312,8 @@ class ExLlamaV2LayerAdapter:
                                             cache=self._cache)
             # Advance current_seq_len past the prompt tokens
             self._cache.current_seq_len = input_ids.shape[1]
+
+            think_detected = False
 
             for _ in range(max_new_tokens):
                 next_logits = logits[0, -1, :].float()
@@ -313,34 +329,29 @@ class ExLlamaV2LayerAdapter:
 
                 generated_ids.append(next_id)
 
+                # Force-close thinking by token ID (no string decode needed)
+                if (not think_detected
+                        and self._think_token_id is not None
+                        and next_id == self._think_token_id
+                        and self._think_close_ids):
+                    think_detected = True
+                    self._think_close_count += 1
+                    self._think_close_total += 1
+                    # Inject </think> tokens
+                    for cid in self._think_close_ids:
+                        generated_ids.append(cid)
+                        next_tensor = torch.tensor([[cid]], dtype=torch.long)
+                        logits = self.forward_with_path(
+                            next_tensor, layer_path, cache=self._cache)
+                        self._cache.current_seq_len += 1
+                    continue  # skip the normal forward — we already advanced
+
                 # Single-token decode: cache.current_seq_len tells
                 # attention where to read/write in the KV cache
                 next_tensor = torch.tensor([[next_id]], dtype=torch.long)
                 logits = self.forward_with_path(next_tensor, layer_path,
                                                 cache=self._cache)
                 self._cache.current_seq_len += 1
-
-                # Check string stop conditions
-                partial = self._decode(generated_ids)
-                if isinstance(partial, list):
-                    partial = ''.join(partial)
-                if "<|im_end|>" in partial:
-                    break
-
-                # Force-close thinking: if model starts <think> block,
-                # inject </think> to cut it short and get the answer.
-                # The model sees a closed think block in context and
-                # proceeds directly to the answer.
-                if "<think>" in partial and "</think>" not in partial:
-                    close_ids = self._encode("</think>", add_bos=False)
-                    if close_ids.dim() == 2:
-                        close_ids = close_ids[0]
-                    for cid in close_ids.tolist():
-                        generated_ids.append(cid)
-                        next_tensor = torch.tensor([[cid]], dtype=torch.long)
-                        logits = self.forward_with_path(
-                            next_tensor, layer_path, cache=self._cache)
-                        self._cache.current_seq_len += 1
 
         if not generated_ids:
             return ""
@@ -405,13 +416,11 @@ class ExLlamaV2LayerAdapter:
             input_ids = input_ids.unsqueeze(0)
 
         batch_size, seq_len = input_ids.shape
-
-        def _fresh_params():
-            return ExLlamaV2Attention.Params(batch_size, seq_len, 0)
+        attn_params = ExLlamaV2Attention.Params(batch_size, seq_len, 0)
 
         x = input_ids
         for module in self._pre_modules:
-            x = self._run_module(module, x, None, _fresh_params(), 0)
+            x = self._run_module(module, x, None, attn_params, 0)
 
         if hook_fn:
             hook_fn(-1, -1, x.detach().clone())
@@ -420,10 +429,10 @@ class ExLlamaV2LayerAdapter:
             layer = self._layer_modules[layer_idx]
             if self._moe_mode:
                 attn, mlp = layer
-                x = self._run_module(attn, x, None, _fresh_params(), 0)
-                x = self._run_module(mlp, x, None, _fresh_params(), 0)
+                x = self._run_module(attn, x, None, attn_params, 0)
+                x = self._run_module(mlp, x, None, attn_params, 0)
             else:
-                x = self._run_module(layer, x, None, _fresh_params(), 0)
+                x = self._run_module(layer, x, None, attn_params, 0)
             if hook_fn:
                 hook_fn(k, layer_idx, x.detach().clone())
 
@@ -438,12 +447,10 @@ class ExLlamaV2LayerAdapter:
             h = h.unsqueeze(0)
 
         batch_size, seq_len = h.shape[0], h.shape[1]
-
-        def _fresh_params():
-            return ExLlamaV2Attention.Params(batch_size, seq_len, 0)
+        attn_params = ExLlamaV2Attention.Params(batch_size, seq_len, 0)
 
         for module in self._post_modules:
-            h = self._run_module(module, h, None, _fresh_params(), 0)
+            h = self._run_module(module, h, None, attn_params, 0)
 
         logits = h[0, -1, :].float()
         probs = torch.softmax(logits, dim=-1)

@@ -409,3 +409,8 @@ Estimated sweep time: ~17 hours (down from 137 hours with 20 probes × full item
 [--:--] DONE: Pruning logic: 2 consecutive configs with combined delta < -1.0 → run 1 more (for research) → skip remaining j for that i
 [--:--] DONE: --no-prune flag to disable, default enabled
 [--:--] DONE: Estimated ~35% sweep time savings from pruning catastrophic regions
+
+## Performance Optimizations
+[--:--] DONE: OPT 1 — Remove per-token string decode in generate_short. Detect <think> by token ID (stored at load time), not string decode. Eliminates tokenizer round-trip + CPU tensor creation every token.
+[--:--] DONE: OPT 2 — Single Params object per forward_with_path. Was creating ~98 Params per forward pass. Safe because config.no_graphs=True prevents CUDA graph caching. Applied to forward_with_path, forward_with_hooks, project_to_vocab.
+[--:--] DONE: OPT 3 — Think-close counter. Tracks how many times <think> force-close fires. Logged per probe in runner.py. Tells us if disrupted layer configs cause thinking to leak through.
