@@ -129,10 +129,15 @@ class ExLlamaV2LayerAdapter:
             )
 
         # ---- Cache ----
+        # Allocate 2x layer slots so duplicate-layer paths fit.
+        # ExLlamaV2Cache reads num_hidden_layers from model.config.
+        orig_num_layers = self._config.num_hidden_layers
+        self._config.num_hidden_layers = self.num_layers * 2
         self._cache = ExLlamaV2Cache(
             self._model, batch_size=1,
             max_seq_len=self.cache_size_tokens, lazy=False,
         )
+        self._config.num_hidden_layers = orig_num_layers
 
         # ---- Device ----
         # ExLlamaV2 modules have device_idx attribute (int >= 0 for CUDA)
@@ -196,12 +201,13 @@ class ExLlamaV2LayerAdapter:
     ) -> torch.Tensor:
         """Forward pass with custom layer path.
 
-        cache: an ExLlamaV2Cache instance, or None for no caching.
-               Caller is responsible for creating a FRESH cache per
-               generate_short() call — stale cache slots from a previous
-               run cause std::bad_alloc when duplicate layers write the
-               same slot twice.
-        past_len: number of previously cached tokens (for autoregressive decode).
+        When cache is provided, each attention module's layer_idx is
+        temporarily remapped to its execution position (0, 1, 2, ...)
+        so that duplicate layers get separate cache slots instead of
+        colliding on the same slot.
+
+        Cache must have >= len(layer_path) layer slots (we allocate
+        num_layers * 2 in __init__).
         """
         from exllamav2.attn import ExLlamaV2Attention
 
@@ -214,14 +220,28 @@ class ExLlamaV2LayerAdapter:
             x = self._run_module(module, x, cache, attn_params, past_len)
 
         # Transformer layers in custom order
-        for layer_idx in layer_path:
+        for exec_pos, layer_idx in enumerate(layer_path):
             layer = self._layer_modules[layer_idx]
             if self._moe_mode:
                 attn, mlp = layer
+                # Remap attention layer_idx → execution position for cache
+                if cache is not None:
+                    orig_idx = attn.layer_idx
+                    attn.layer_idx = exec_pos
                 x = self._run_module(attn, x, cache, attn_params, past_len)
+                if cache is not None:
+                    attn.layer_idx = orig_idx
                 x = self._run_module(mlp, x, cache, attn_params, past_len)
             else:
+                # ParallelDecoder — find attention sub-module
+                if cache is not None:
+                    attn_sub = getattr(layer, 'attn', None)
+                    if attn_sub is not None and hasattr(attn_sub, 'layer_idx'):
+                        orig_idx = attn_sub.layer_idx
+                        attn_sub.layer_idx = exec_pos
                 x = self._run_module(layer, x, cache, attn_params, past_len)
+                if cache is not None and attn_sub is not None and hasattr(attn_sub, 'layer_idx'):
+                    attn_sub.layer_idx = orig_idx
 
         # Post-layer modules (norm + lm_head)
         for module in self._post_modules:

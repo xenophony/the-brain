@@ -377,4 +377,5 @@
 [--:--] DONE: forward_with_path accepts explicit cache param (caller controls lifecycle)
 [--:--] DONE: generate_short creates fresh cache (max_seq_len=512) each call — empty slots, no stale KV entries, O(n) autoregressive decode restored
 [--:--] DONE: get_logprobs / forward_with_hooks still use cache=None (single-pass, no caching needed)
-[--:--] DONE: CRITICAL FIX v3 — try/finally + del cache + torch.cuda.empty_cache() in generate_short (24 calls exhausted CUDA memory without explicit free)
+[--:--] DONE: CRITICAL FIX v3 — try/finally (reverted, see v4)
+[--:--] DONE: CRITICAL FIX v4 — Cache sized to num_layers*2 (96 slots for 48-layer model). forward_with_path remaps attn.layer_idx → execution position so duplicate layers get separate cache slots. Single self._cache with reset(), no allocation per call.
