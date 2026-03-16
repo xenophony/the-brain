@@ -244,7 +244,7 @@ class HallucinationProbe(BaseProbe):
 
         for q in self._limit(QUESTIONS):
             prompt = PROMPT_TEMPLATE.format(question=q["question"])
-            response = model.generate_short(prompt, max_new_tokens=40, temperature=0.0)
+            response = model.generate_short(prompt, max_new_tokens=20, temperature=0.0)
             score = score_hallucination(response, q)
             weight = 1.5 if q["category"] in ("A", "B") else 1.0
             scores.append(score * weight)

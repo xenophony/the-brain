@@ -114,7 +114,7 @@ class ReasoningProbe(BaseProbe):
             scores = easy_scores if difficulty == "easy" else hard_scores
             for item in items:
                 response = model.generate_short(
-                    item["prompt"], max_new_tokens=500, temperature=0.0
+                    item["prompt"], max_new_tokens=20, temperature=0.0
                 )
                 score = score_reasoning(response, item["answer"])
                 scores.append(score)
