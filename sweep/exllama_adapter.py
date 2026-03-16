@@ -271,8 +271,8 @@ class ExLlamaV2LayerAdapter:
     # ------------------------------------------------------------------ #
 
     _CHAT_TEMPLATE_NO_THINK = (
-        "<|im_start|>user\n{prompt} /no_think<|im_end|>\n"
-        "<|im_start|>assistant\n"
+        "<|im_start|>user\n{prompt}<|im_end|>\n"
+        "<|im_start|>assistant\n<think>\n\n</think>\n\n"
     )
     _CHAT_TEMPLATE_THINK = (
         "<|im_start|>user\n{prompt}<|im_end|>\n"
@@ -329,7 +329,10 @@ class ExLlamaV2LayerAdapter:
 
                 generated_ids.append(next_id)
 
-                # Force-close thinking by token ID (no string decode needed)
+                # Force-close thinking by token ID — safety net.
+                # Should rarely fire with the hard no-think template
+                # (pre-filled empty think block). If it does, thinking
+                # is leaking through disrupted layer configs.
                 if (not think_detected
                         and self._think_token_id is not None
                         and next_id == self._think_token_id
@@ -337,6 +340,7 @@ class ExLlamaV2LayerAdapter:
                     think_detected = True
                     self._think_close_count += 1
                     self._think_close_total += 1
+                    print(f"WARNING: think leak detected, force-closing")
                     # Inject </think> tokens
                     for cid in self._think_close_ids:
                         generated_ids.append(cid)
