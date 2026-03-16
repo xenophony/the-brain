@@ -17,41 +17,51 @@ import re
 from probes.registry import BaseProbe, register_probe
 
 SCENARIOS = [
+    # Interleaved easy/hard so _limit(8) gets a balanced mix
+    # Easy — model should be consistent
     {
         "problem": "If a train travels 60 km in 30 minutes, what is its speed in km/h?",
         "accept": ["120"],
     },
-    {
-        "problem": "A bag has 3 red balls and 5 blue balls. What fraction of the balls are red?",
-        "accept": ["3/8", "0.375", "three eighths"],
-    },
-    {
-        "problem": "If all roses are flowers and some flowers fade quickly, can we conclude that some roses fade quickly?",
-        "accept": ["no", "cannot", "not necessarily"],
-    },
-    {
-        "problem": "What is 15% of 200?",
-        "accept": ["30"],
-    },
+    # Hard — tricky answer, model often inconsistent
     {
         "problem": "A clock shows 3:15. What is the angle between the hour and minute hands?",
         "accept": ["7.5", "7", "8"],
     },
+    # Easy
     {
-        "problem": "If you flip a fair coin 3 times, what is the probability of getting exactly 2 heads?",
-        "accept": ["3/8", "0.375", "37.5"],
+        "problem": "What is 15% of 200?",
+        "accept": ["30"],
     },
-    {
-        "problem": "A rectangle has length 8 and width 5. What is its perimeter?",
-        "accept": ["26"],
-    },
+    # Hard — day-of-week arithmetic, models often get different answers
     {
         "problem": "If today is Wednesday, what day will it be 100 days from now?",
         "accept": ["friday"],
     },
+    # Easy
     {
         "problem": "How many prime numbers are there between 10 and 20?",
         "accept": ["4", "four"],
+    },
+    # Hard — fraction, models sometimes say different forms
+    {
+        "problem": "A bag has 3 red balls and 5 blue balls. What fraction of the balls are red?",
+        "accept": ["3/8", "0.375", "three eighths"],
+    },
+    # Easy
+    {
+        "problem": "If 5 workers can build a wall in 10 days, how many days would 10 workers take?",
+        "accept": ["5", "five"],
+    },
+    # Hard — probability, models often inconsistent between CoT and direct
+    {
+        "problem": "If you flip a fair coin 3 times, what is the probability of getting exactly 2 heads?",
+        "accept": ["3/8", "0.375", "37.5"],
+    },
+    # --- Items 9-12 (used with --full) ---
+    {
+        "problem": "If all roses are flowers and some flowers fade quickly, can we conclude that some roses fade quickly?",
+        "accept": ["no", "cannot", "not necessarily"],
     },
     {
         "problem": "A shirt costs $40 after a 20% discount. What was the original price?",
@@ -62,8 +72,8 @@ SCENARIOS = [
         "accept": ["162"],
     },
     {
-        "problem": "If 5 workers can build a wall in 10 days, how many days would 10 workers take?",
-        "accept": ["5", "five"],
+        "problem": "A rectangle has length 8 and width 5. What is its perimeter?",
+        "accept": ["26"],
     },
 ]
 
@@ -93,9 +103,19 @@ def _extract_final_answer(response: str) -> str:
         return ""
 
     # Try to find **bolded** answer (strongest signal — models bold their final answer)
+    # Only use if the bolded text looks like an answer (short, not a heading)
     bold = re.findall(r'\*\*(.+?)\*\*', r)
     if bold:
-        return bold[-1].strip().lower()
+        candidate = bold[-1].strip().lower()
+        # Skip if it looks like a heading or label, not an answer
+        if len(candidate) < 30 and not candidate.endswith(":"):
+            # Prefer bolded numbers/values over bolded words
+            nums = re.findall(r'-?\d+\.?\d*', candidate)
+            if nums:
+                return candidate
+            # Short bolded text that isn't a heading — likely the answer
+            if len(candidate) < 15:
+                return candidate
 
     # Split into sentences/lines and work from the end
     # Last 2 sentences are most likely to contain the final answer
@@ -235,11 +255,17 @@ class ConsistencyProbe(BaseProbe):
             reasoning = model.generate_short(r_prompt, max_new_tokens=500, temperature=0.0)
             reasoning_answer = _extract_final_answer(reasoning)
 
-            # If extraction failed or looks wrong, scan full reasoning
-            # for any accepted answer (handles truncated CoT where the
-            # answer appears mid-response but extraction misses it)
-            if not reasoning_answer or len(reasoning_answer) > 50:
-                reasoning_answer = _scan_for_accepted(reasoning, scenario["accept"])
+            # Only override if extraction clearly failed (empty, or
+            # grabbed a generic label with no numbers)
+            if not reasoning_answer or (
+                not re.search(r'\d', reasoning_answer)
+                and reasoning_answer not in ("no", "yes", "friday", "saturday",
+                                              "sunday", "monday", "tuesday",
+                                              "wednesday", "thursday")
+            ):
+                scanned = _scan_for_accepted(reasoning, scenario["accept"])
+                if scanned:
+                    reasoning_answer = scanned
 
             # Phase 2: direct answer (fresh prompt)
             d_prompt = DIRECT_TEMPLATE.format(problem=scenario["problem"])
