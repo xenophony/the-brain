@@ -378,4 +378,5 @@
 [--:--] DONE: generate_short creates fresh cache (max_seq_len=512) each call — empty slots, no stale KV entries, O(n) autoregressive decode restored
 [--:--] DONE: get_logprobs / forward_with_hooks still use cache=None (single-pass, no caching needed)
 [--:--] DONE: CRITICAL FIX v3-v4 — layer_idx remapping (FAILED — attn ignores past_len param)
-[--:--] DONE: CRITICAL FIX v5 — No KV cache at all. Read ExLlamaV2 attn.py source: attention unconditionally reads cache.current_seq_len, ignores past_len parameter. Cannot safely manage cache with duplicate layers. Fix: cache=None everywhere, full sequence each decode step. O(n²) but ≤2s/question for 20 tokens. No cache allocation, no cache state, no bad_alloc.
+[--:--] DONE: CRITICAL FIX v5 — No KV cache (too slow — O(n²) with CPU embedding bottleneck, 14% GPU util)
+[--:--] DONE: CRITICAL FIX v6 — Restore KV cache with proper current_seq_len management. Read attn.py source: attention reads cache.current_seq_len, ignores past_len param. Fix: manage current_seq_len ourselves (reset→0, after prefill→prompt_len, after each decode→+1). Duplicate layers overwrite same cache slot (semantically imperfect, won't crash). O(n) decode restored.

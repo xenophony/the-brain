@@ -217,6 +217,21 @@ When you see "Expected all tensors to be on the same device":
 - CORRECT fix: check which device the MODULE expects, move input to match
 - WRONG fix: force everything to one device
 
+## Debugging Rules — ALWAYS FOLLOW
+
+When debugging ExLlamaV2 or any external library:
+1. ALWAYS read the actual source code on GitHub before writing any fix
+2. NEVER guess at API behavior — read the implementation
+3. For ExLlamaV2 specifically: https://github.com/turboderp/exllamav2
+   - attn.py for attention/cache behavior
+   - cache.py for cache internals
+   - model.py for module structure
+4. When a fix doesn't work after 2 attempts, stop and read the source
+5. Print/cat source files if GitHub is not accessible
+
+This rule exists because we spent 10+ hours debugging ExLlamaV2
+by guessing at the API instead of reading it.
+
 ## Common Failure Modes to Watch For
 - ExLlamaV2 cache not reset between configs → stale KV cache corrupts results
 - Probe returning NaN → scoring function edge case, add try/except with 0.0 fallback
