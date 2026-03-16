@@ -147,6 +147,20 @@ def _extract_final_answer(response: str) -> str:
     return lines[-1].lower() if lines else ""
 
 
+def _scan_for_accepted(response: str, accept: list[str]) -> str:
+    """Scan full response for any accepted answer. Fallback when
+    _extract_final_answer fails on truncated CoT responses."""
+    r_lower = response.lower()
+    for acc in accept:
+        if acc.lower() in r_lower:
+            return acc.lower()
+    # Try extracting last number from entire response
+    nums = re.findall(r'-?\d+\.?\d*', response)
+    if nums:
+        return nums[-1]
+    return ""
+
+
 def _extract_key_value(answer: str, accept: list[str]) -> str:
     """Extract the key value (number or keyword) from an answer string.
 
@@ -220,6 +234,12 @@ class ConsistencyProbe(BaseProbe):
             r_prompt = REASONING_TEMPLATE.format(problem=scenario["problem"])
             reasoning = model.generate_short(r_prompt, max_new_tokens=500, temperature=0.0)
             reasoning_answer = _extract_final_answer(reasoning)
+
+            # If extraction failed or looks wrong, scan full reasoning
+            # for any accepted answer (handles truncated CoT where the
+            # answer appears mid-response but extraction misses it)
+            if not reasoning_answer or len(reasoning_answer) > 50:
+                reasoning_answer = _scan_for_accepted(reasoning, scenario["accept"])
 
             # Phase 2: direct answer (fresh prompt)
             d_prompt = DIRECT_TEMPLATE.format(problem=scenario["problem"])
