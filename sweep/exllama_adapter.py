@@ -266,39 +266,43 @@ class ExLlamaV2LayerAdapter:
             max_seq_len=512, lazy=False,
         )
 
-        with torch.inference_mode():
-            # Prefill: process full prompt
-            logits = self.forward_with_path(input_ids, layer_path,
-                                            cache=cache, past_len=0)
-            current_past_len = input_ids.shape[1]
+        try:
+            with torch.inference_mode():
+                # Prefill: process full prompt
+                logits = self.forward_with_path(input_ids, layer_path,
+                                                cache=cache, past_len=0)
+                current_past_len = input_ids.shape[1]
 
-            for _ in range(max_new_tokens):
-                next_logits = logits[0, -1, :].float()
+                for _ in range(max_new_tokens):
+                    next_logits = logits[0, -1, :].float()
 
-                if temperature <= 0.0 or temperature < 1e-7:
-                    next_id = next_logits.argmax().item()
-                else:
-                    probs = torch.softmax(next_logits / temperature, dim=-1)
-                    next_id = torch.multinomial(probs, 1).item()
+                    if temperature <= 0.0 or temperature < 1e-7:
+                        next_id = next_logits.argmax().item()
+                    else:
+                        probs = torch.softmax(next_logits / temperature, dim=-1)
+                        next_id = torch.multinomial(probs, 1).item()
 
-                if next_id in self._eos_token_ids:
-                    break
+                    if next_id in self._eos_token_ids:
+                        break
 
-                generated_ids.append(next_id)
+                    generated_ids.append(next_id)
 
-                # Single-token decode with KV cache
-                next_tensor = torch.tensor([[next_id]], dtype=torch.long)
-                logits = self.forward_with_path(next_tensor, layer_path,
-                                                cache=cache,
-                                                past_len=current_past_len)
-                current_past_len += 1
+                    # Single-token decode with KV cache
+                    next_tensor = torch.tensor([[next_id]], dtype=torch.long)
+                    logits = self.forward_with_path(next_tensor, layer_path,
+                                                    cache=cache,
+                                                    past_len=current_past_len)
+                    current_past_len += 1
 
-                # Check string stop conditions
-                partial = self._decode(generated_ids)
-                if isinstance(partial, list):
-                    partial = ''.join(partial)
-                if "<|im_end|>" in partial:
-                    break
+                    # Check string stop conditions
+                    partial = self._decode(generated_ids)
+                    if isinstance(partial, list):
+                        partial = ''.join(partial)
+                    if "<|im_end|>" in partial:
+                        break
+        finally:
+            del cache
+            torch.cuda.empty_cache()
 
         if not generated_ids:
             return ""

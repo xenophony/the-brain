@@ -377,3 +377,4 @@
 [--:--] DONE: forward_with_path accepts explicit cache param (caller controls lifecycle)
 [--:--] DONE: generate_short creates fresh cache (max_seq_len=512) each call — empty slots, no stale KV entries, O(n) autoregressive decode restored
 [--:--] DONE: get_logprobs / forward_with_hooks still use cache=None (single-pass, no caching needed)
+[--:--] DONE: CRITICAL FIX v3 — try/finally + del cache + torch.cuda.empty_cache() in generate_short (24 calls exhausted CUDA memory without explicit free)
