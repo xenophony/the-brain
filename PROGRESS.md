@@ -359,3 +359,14 @@
 [01:00] DONE: Added max_seq_len parameter to ExLlamaV2LayerAdapter (default 2048, reduces KV cache VRAM)
 [01:00] DONE: Changed model.load(lazy=False) to model.load() — loads pre-quantized weights
 [01:00] NOTE: Model must be in pre-quantized format (GPTQ/EXL2). Use quantized Qwen3-30B-A3B for 32GB VRAM.
+
+## GPU Sweep Debugging Session
+[02:00] CRITICAL FINDING: ExLlamaV2 embedding layer runs on CPU (device_idx=-1) while transformer layers run on GPU (device_idx=0). This is by design — ExLlamaV2's own forward_chunk uses safe_move_tensor to shuttle between devices.
+[02:00] CRITICAL FINDING: CUDA operations fail in non-main threads. Sweep runner threading bypasses GPU execution entirely — all probes timeout silently.
+[02:00] FIX: direct probe.run() call for GPU adapters (hasattr(model, '_model')), threading only for mock/API adapters.
+[02:00] FIX: _run_module() moves tensors to match each module's device_idx (-1=CPU for embedding, 0=GPU for layers).
+[02:00] FIX: _encode() returns CPU tensors (correct — embedding expects CPU input).
+[02:00] FIX: generate_short uses use_cache=True with KV cache for O(n) not O(n²) generation.
+[02:00] FIX: cache.reset() called before each generation to prevent KV contamination between configs.
+[02:00] CRITICAL RULE ADDED TO CLAUDE.md: Never move tensors to CPU to fix CUDA errors. ExLlamaV2 embedding on CPU is by design. Device flow: input(CPU) → embedding(CPU) → hidden→GPU → layers(GPU) → output(GPU).
+[02:00] STATUS: Adapter generates correct output in Python REPL. Sweep runner needs GPU instance test with debug logging to confirm direct-call path is taken.
