@@ -65,6 +65,10 @@ OUTPUT_DIR = Path(__file__).parent.parent / "results" / "baselines"
 OUTPUT_FILE = OUTPUT_DIR / "baseline_scores.json"
 RESPONSES_FILE = OUTPUT_DIR / "baseline_responses.json"
 
+# --no-think mode: separate output files so thinking/non-thinking don't clobber
+NOTHINK_OUTPUT_FILE = OUTPUT_DIR / "baseline_scores_nothink.json"
+NOTHINK_RESPONSES_FILE = OUTPUT_DIR / "baseline_responses_nothink.json"
+
 # Parallelism config
 MAX_PARALLEL_PROBES = 6  # max concurrent probes per model
 PROBE_TIMEOUT_SECONDS = 300  # 5 minutes max per probe (thinking models need more time)
@@ -333,8 +337,12 @@ def run_baselines(
     probe_names: list[str],
     dry_run: bool = False,
     resume: bool = True,
+    no_think: bool = False,
 ) -> dict:
     """Run probes against API models with parallel execution."""
+
+    if no_think:
+        print("Mode: /no_think (suppressing thinking, separate output files)")
 
     # --- Dry run --------------------------------------------------------
     if dry_run:
@@ -356,8 +364,11 @@ def run_baselines(
         return {}
 
     # --- Real run -------------------------------------------------------
-    results = _load_existing(OUTPUT_FILE)
-    responses = _load_existing(RESPONSES_FILE)
+    out_file = NOTHINK_OUTPUT_FILE if no_think else OUTPUT_FILE
+    resp_file = NOTHINK_RESPONSES_FILE if no_think else RESPONSES_FILE
+    out_file.parent.mkdir(parents=True, exist_ok=True)
+    results = _load_existing(out_file)
+    responses = _load_existing(resp_file)
     if not resume:
         # Clear only the specified models, preserve others
         for name in model_names:
@@ -392,6 +403,14 @@ def run_baselines(
         except (ImportError, ValueError) as exc:
             print(f"ERROR creating adapter for {model_name}: {exc}")
             continue
+
+        # Wrap adapter to append /no_think to all prompts
+        if no_think:
+            _orig_generate = adapter.generate_short
+            def _nothink_generate(prompt, max_new_tokens=20, temperature=0.0,
+                                  _orig=_orig_generate):
+                return _orig(prompt + " /no_think", max_new_tokens, temperature)
+            adapter.generate_short = _nothink_generate
 
         # Filter probes: skip already-completed in resume mode
         probes_to_run = []
@@ -439,14 +458,14 @@ def run_baselines(
                         "latency_seconds": probe_result["latency_seconds"],
                         "error": probe_result["error"],
                     }
-                    _atomic_save(results, OUTPUT_FILE)
+                    _atomic_save(results, out_file)
 
                     # Save item-level responses if available
                     if probe_result.get("item_results"):
                         if model_name not in responses:
                             responses[model_name] = {}
                         responses[model_name][pname] = probe_result["item_results"]
-                        _atomic_save(responses, RESPONSES_FILE)
+                        _atomic_save(responses, resp_file)
 
         model_elapsed = time.perf_counter() - model_t0
         n_completed = len(probes_to_run)
@@ -454,7 +473,7 @@ def run_baselines(
         print(f"\n  [{model_name}] Complete — {n_completed} probes, ~{total_items} questions, "
               f"{model_elapsed:.1f}s")
 
-    print(f"\nResults saved to {OUTPUT_FILE}")
+    print(f"\nResults saved to {out_file}")
     return results
 
 
@@ -482,6 +501,11 @@ def main():
         "--no-resume", action="store_true",
         help="Ignore existing results and re-run everything",
     )
+    parser.add_argument(
+        "--no-think", action="store_true",
+        help="Append /no_think to prompts (matches local sweep mode). "
+             "Results saved to separate files (*_nothink.json)",
+    )
     args = parser.parse_args()
 
     models = list(MODEL_REGISTRY.keys()) if "all" in args.models else args.models
@@ -499,6 +523,7 @@ def main():
         probe_names=probes,
         dry_run=args.dry_run,
         resume=not args.no_resume,
+        no_think=args.no_think,
     )
 
     # Auto-generate calibration report after real runs
