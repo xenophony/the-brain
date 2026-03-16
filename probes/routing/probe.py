@@ -29,19 +29,32 @@ EASY_ITEMS = [
     {"task": "What is the opposite of 'benevolent'?", "accept": ["LANGUAGE"]},
 ]
 
-# Hard: ambiguous — multiple domains apply, or the obvious answer is wrong
+# Hard: the obvious domain is WRONG — tests if the model can see past surface cues
 HARD_ITEMS = [
-    {"task": "You're facing north. You turn right, walk 3 blocks, turn left. What direction are you facing?",
-     "accept": ["SPATIAL"]},
-    {"task": "Is the speaker being sarcastic: 'Oh great, another meeting about meetings.'",
-     "accept": ["EMOTIONAL", "LANGUAGE"]},
-    {"task": "In the sentence 'The bank was steep', does 'bank' mean a financial institution or a riverbank?",
-     "accept": ["LANGUAGE"]},
-    {"task": "How many bones are in the adult human hand?", "accept": ["FACTUAL"]},
-    {"task": "A child is crying alone at a playground. What should you do first?",
+    # Has numbers but the challenge is reading comprehension, not calculation
+    {"task": "Tom has 3 sisters. Each sister has 1 brother. How many brothers does Tom have?",
+     "accept": ["LANGUAGE"]},  # Trick question — answer is 0 (Tom IS the brother). It's a language/logic trap, not math.
+    # Looks emotional but requires factual knowledge to judge
+    {"task": "A doctor tells a patient they have 6 months to live. The patient smiles. Why might they smile?",
      "accept": ["EMOTIONAL"]},
-    {"task": "Looking at a city map, which route from A to B avoids the one-way streets?",
+    # Looks like factual recall but requires spatial visualization
+    {"task": "If you fold a standard letter in thirds, which part is visible on top?",
      "accept": ["SPATIAL"]},
+    # Looks like math but is really about language precision
+    {"task": "A farmer has 17 sheep. All but 9 die. How many are left?",
+     "accept": ["LANGUAGE"]},  # "All but 9" = 9 remain. Language comprehension, not subtraction.
+    # Looks like language but requires emotional intelligence
+    {"task": "Your friend says 'I'm fine' while avoiding eye contact. What do they mean?",
+     "accept": ["EMOTIONAL"]},
+    # Looks spatial but is really factual
+    {"task": "Which is further north: New York City or Rome?",
+     "accept": ["FACTUAL", "SPATIAL"]},
+    # Sounds like math but the answer requires no calculation
+    {"task": "If there are 3 apples and you take away 2, how many apples do YOU have?",
+     "accept": ["LANGUAGE"]},  # You have 2 — you took them. Language trick.
+    # Looks emotional but requires factual cultural knowledge
+    {"task": "In Japan, is it rude to tip at a restaurant?",
+     "accept": ["FACTUAL"]},
 ]
 
 
