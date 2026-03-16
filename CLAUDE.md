@@ -106,6 +106,11 @@ Every probe MUST satisfy all three:
 | noise_robustness | General processing stability | Short answer (4 variants) |
 | spatial_pong_simple | Parietal/visual-spatial trajectory | up/down/stay |
 | spatial_pong_strategic | Parietal + prefrontal executive | up/down/stay |
+| implication | Prefrontal cortex / logical inference | valid/invalid |
+| negation | Broca/Wernicke / inhibition circuits | true/false |
+| estimation | Prefrontal cortex / quantitative | Integer |
+| reasoning | Prefrontal cortex / executive reasoning | Integer |
+| routing | Prefrontal cortex / executive control | Domain label |
 
 ## ExLlamaV2 Adapter — Key Technical Notes
 - Layer path injection works by monkey-patching model.forward()

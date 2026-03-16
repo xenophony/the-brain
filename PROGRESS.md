@@ -380,3 +380,23 @@
 [--:--] DONE: CRITICAL FIX v3-v4 — layer_idx remapping (FAILED — attn ignores past_len param)
 [--:--] DONE: CRITICAL FIX v5 — No KV cache (too slow — O(n²) with CPU embedding bottleneck, 14% GPU util)
 [--:--] DONE: CRITICAL FIX v6 — Restore KV cache with proper current_seq_len management. Read attn.py source: attention reads cache.current_seq_len, ignores past_len param. Fix: manage current_seq_len ourselves (reset→0, after prefill→prompt_len, after each decode→+1). Duplicate layers overwrite same cache slot (semantically imperfect, won't crash). O(n) decode restored.
+[--:--] DONE: CRITICAL FIX v7 — Disable CUDA graph caching (fixed deterministic bad_alloc at call 30)
+[--:--] DONE: Added debugging rules to CLAUDE.md — ALWAYS read external library source before fixing
+
+## Probe Research & Calibration
+[--:--] DONE: Researched Qwen3-32B benchmark scores (MATH-500 43.6%, GPQA 41.5%, IFEval 61.5% without thinking)
+[--:--] DONE: Ran all 23 probes against Qwen3-32B API (thinking + no-think modes)
+[--:--] DONE: Identified 7 sweet-spot probes (0.3-0.7): spatial, consistency, hallucination, language, eq, routing, reasoning
+[--:--] DONE: Identified 9 ceiling probes to drop from sweep: math, planning, sycophancy, temporal, factual, implication, negation, code, counterfactual, abstraction, tool_use, noise_robustness
+[--:--] DONE: Created 5 new probes: implication (1.0 ceiling), negation (1.0 ceiling), estimation (0.83), reasoning (0.56 sweet spot), routing (0.50 sweet spot)
+[--:--] DONE: Validated 8-item and 4-item subsets produce comparable scores to full sets
+[--:--] DONE: Added _limit() to BaseProbe — default 8 items per probe, --full for all items
+[--:--] DONE: Fixed consistency probe extraction (bold heading bug, interleaved easy/hard items, _scan_for_accepted fallback)
+[--:--] DONE: Added force-close thinking in adapter (detect <think>, inject </think>)
+[--:--] DONE: Added failure response logging to sweep runner for post-hoc scoring review
+
+## Sweep Configuration — Round 1
+Probes (9): eq, language, hallucination, spatial, consistency, routing, reasoning, spatial_pong_simple, spatial_pong_strategic
+Items per probe: 8 (default _limit)
+Generation calls per config: ~72
+Estimated sweep time: ~17 hours (down from 137 hours with 20 probes × full items)
