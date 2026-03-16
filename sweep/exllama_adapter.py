@@ -274,8 +274,11 @@ class ExLlamaV2LayerAdapter:
         layer_path = self._layer_path or list(range(self.num_layers))
         generated_ids = []
 
-        # Reset cache: current_seq_len = 0, no stale KV
+        # Reset cache and reclaim fragmented CUDA memory.
+        # Without empty_cache(), ~18K attention forward calls per probe
+        # fragment CUDA memory until q_attn_forward_1 can't allocate.
         self._cache.reset()
+        torch.cuda.empty_cache()
 
         with torch.inference_mode():
             # Prefill: cache.current_seq_len is 0 (set by reset)
