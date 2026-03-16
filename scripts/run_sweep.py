@@ -57,6 +57,8 @@ def main():
                         help="Number of baseline runs for variance estimation (default: 3)")
     parser.add_argument("--full", action="store_true",
                         help="Run all probe items (disable max_items limit)")
+    parser.add_argument("--no-prune", action="store_true",
+                        help="Disable adaptive catastrophic pruning")
 
     args = parser.parse_args()
     
@@ -121,6 +123,7 @@ def main():
         baseline_repeats=args.baseline_repeats,
         resume=args.resume,
         full_items=args.full,
+        prune=not args.no_prune,
     )
 
     runner = SweepRunner(config, adapter_class=adapter_class)

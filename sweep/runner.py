@@ -38,6 +38,9 @@ class SweepConfig:
     baseline_repeats: int = 3          # run baseline N times for variance estimation
     resume: bool = False               # resume from existing checkpoint
     full_items: bool = False             # if True, probe.max_items = None (run all items)
+    prune: bool = True                  # adaptive catastrophic pruning
+    prune_threshold: float = -1.0       # delta threshold for catastrophic detection
+    prune_consecutive: int = 2          # consecutive catastrophic configs before pruning
 
 
 @dataclass
@@ -310,7 +313,22 @@ class SweepRunner:
         print(f"Sweeping {len(remaining)} {label} configs ({self.n_layers} layers, "
               f"probes: {self.config.probe_names})")
 
+        # Adaptive catastrophic pruning state: track consecutive catastrophic
+        # deltas per i value. Once triggered, run one more config (for research)
+        # then skip remaining j values for that i.
+        # Key: i -> {"consecutive": int, "pruned": bool, "capture_one": bool}
+        prune_state: dict[int, dict] = {}
+        pruned_count = 0
+
         for idx, (i, j) in enumerate(remaining):
+            # Check if this i has been pruned
+            ps = prune_state.get(i)
+            if ps and ps.get("pruned"):
+                # Already captured the one extra — skip entirely
+                pruned_count += 1
+                self._completed_configs.add((i, j, mode))
+                continue
+
             t0 = time.time()
             layer_path = path_builder(i, j)
             scores = self.run_probes(layer_path)
@@ -330,13 +348,41 @@ class SweepRunner:
             self._completed_configs.add((i, j, mode))
 
             # Progress
-            combined_delta = sum(deltas.values())
+            combined_delta = sum(
+                v for k, v in deltas.items()
+                if not k.startswith("_") and not k.endswith("_easy") and not k.endswith("_hard")
+            )
             sign = "+" if mode == "duplicate" else "-"
-            print(f"[{skipped+idx+1}/{total}] ({i},{j}) {sign}{n_affected} layers {block_label} | "
+            print(f"[{skipped+idx+1-pruned_count}/{total}] ({i},{j}) {sign}{n_affected} layers {block_label} | "
                   f"delta={combined_delta:+.4f} | {elapsed:.1f}s")
+
+            # Adaptive catastrophic pruning
+            if self.config.prune:
+                if i not in prune_state:
+                    prune_state[i] = {"consecutive": 0, "pruned": False, "capture_one": False}
+                ps = prune_state[i]
+
+                if combined_delta < self.config.prune_threshold:
+                    ps["consecutive"] += 1
+                else:
+                    ps["consecutive"] = 0
+
+                if ps["consecutive"] >= self.config.prune_consecutive:
+                    if ps.get("capture_one"):
+                        # We already captured the extra one — now prune
+                        ps["pruned"] = True
+                        print(f"  PRUNED: i={i} catastrophic from j={j} onward "
+                              f"({ps['consecutive']} consecutive delta < {self.config.prune_threshold})")
+                    else:
+                        # Mark to capture one more, then prune
+                        ps["capture_one"] = True
 
             if (idx + 1) % self.config.save_interval == 0:
                 self._checkpoint()
+
+        if pruned_count > 0:
+            print(f"\nAdaptive pruning skipped {pruned_count} configs "
+                  f"(~{100*pruned_count//(len(remaining) or 1)}% savings)")
 
         self._checkpoint()
         print(f"\n{label.capitalize()} sweep complete. Results saved to {self.output_dir}")

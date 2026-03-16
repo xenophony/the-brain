@@ -396,7 +396,16 @@
 [--:--] DONE: Added failure response logging to sweep runner for post-hoc scoring review
 
 ## Sweep Configuration — Round 1
-Probes (9): eq, language, hallucination, spatial, consistency, routing, reasoning, spatial_pong_simple, spatial_pong_strategic
+Probes (9): eq, language, hallucination, spatial, consistency, judgement, reasoning, spatial_pong_simple, spatial_pong_strategic
+Ceiling probes (parked for round 2): routing (1.0 — save for after circuit map identifies routes)
 Items per probe: 8 (default _limit)
-Generation calls per config: ~72
+Generation calls per config: ~80
 Estimated sweep time: ~17 hours (down from 137 hours with 20 probes × full items)
+
+## Adaptive Catastrophic Pruning
+[--:--] DONE: Added adaptive pruning to SweepRunner
+[--:--] FINDING: Duplicate sweeps on Qwen3-30B show catastrophic collapse when duplicating into layers 35+
+[--:--] FINDING: Pattern: near-zero delta → first big drop → floor (-1.8) within 1-2 configs, no recovery
+[--:--] DONE: Pruning logic: 2 consecutive configs with combined delta < -1.0 → run 1 more (for research) → skip remaining j for that i
+[--:--] DONE: --no-prune flag to disable, default enabled
+[--:--] DONE: Estimated ~35% sweep time savings from pruning catastrophic regions
