@@ -178,9 +178,8 @@ class SweepRunner:
             else:
                 scores[probe_name] = result
 
-            # Log think-close count if adapter tracks it
-            if hasattr(self.model, '_think_close_total') and self.model._think_close_total > 0:
-                print(f"  [{probe_name}] think_closes={self.model._think_close_total}")
+            # Reset think-close counter (silent — logging removed for speed)
+            if hasattr(self.model, '_think_close_total'):
                 self.model._think_close_total = 0
 
         return scores

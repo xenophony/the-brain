@@ -348,7 +348,6 @@ class ExLlamaV2LayerAdapter:
                     think_detected = True
                     self._think_close_count += 1
                     self._think_close_total += 1
-                    print(f"WARNING: think leak detected, force-closing")
                     # Inject </think> tokens
                     for cid in self._think_close_ids:
                         generated_ids.append(cid)
