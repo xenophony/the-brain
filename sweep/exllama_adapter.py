@@ -253,20 +253,20 @@ class ExLlamaV2LayerAdapter:
 
     def generate_short(self, prompt: str, max_new_tokens: int = 20,
                        temperature: float = 0.0) -> str:
-        """Generate with fresh KV cache per call.
+        """Generate with KV cache reuse.
 
-        Creates a fresh cache each call to prevent accumulated C
-        extension state from causing std::bad_alloc after ~24 calls.
-        Old cache is explicitly deleted first so only one exists.
+        Reuses a single persistent cache (allocated in __init__) and
+        resets current_seq_len to 0 each call. No cache
+        re-allocation, no torch.cuda.empty_cache() — let PyTorch's
+        caching allocator handle memory reuse to avoid CUDA heap
+        fragmentation.
 
         We manage cache.current_seq_len ourselves:
-          - Fresh cache starts at 0
+          - After reset: current_seq_len = 0
           - After prefill: current_seq_len = prompt_len
           - After each decode step: current_seq_len += 1
         """
         import re
-        import gc
-        from exllamav2.cache import ExLlamaV2Cache
 
         if "<|im_start|>" not in prompt:
             prompt = self._CHAT_TEMPLATE_NO_THINK.format(prompt=prompt)
@@ -275,15 +275,15 @@ class ExLlamaV2LayerAdapter:
         layer_path = self._layer_path or list(range(self.num_layers))
         generated_ids = []
 
-        # Fresh cache each call — prevents C extension state accumulation.
-        # Delete old cache first so only one exists (no OOM).
-        del self._cache
-        gc.collect()
-        torch.cuda.empty_cache()
-        self._cache = ExLlamaV2Cache(
-            self._model, batch_size=1,
-            max_seq_len=self.cache_size_tokens, lazy=False,
-        )
+        # Memory stats for fragmentation diagnosis
+        stats = torch.cuda.memory_stats()
+        retries = stats.get('num_alloc_retries', 0)
+        allocated = torch.cuda.memory_allocated() / 1e9
+        print(f"DEBUG mem: {allocated:.2f}GB allocated, {retries} alloc_retries")
+
+        # Reuse persistent cache — just reset seq position.
+        # No del/gc/empty_cache: avoids CUDA heap fragmentation.
+        self._cache.reset()
 
         with torch.inference_mode():
             # Prefill: cache.current_seq_len is 0 (fresh cache)
