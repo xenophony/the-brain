@@ -169,6 +169,13 @@ class SweepRunner:
                     scores[f"{probe_name}_easy"] = result["easy_score"]
                 if "hard_score" in result:
                     scores[f"{probe_name}_hard"] = result["hard_score"]
+                # Store logprob probability tracking if available
+                if "p_correct" in result:
+                    scores[f"{probe_name}_pcorrect"] = result["p_correct"]
+                if "p_correct_easy" in result:
+                    scores[f"{probe_name}_pcorrect_easy"] = result["p_correct_easy"]
+                if "p_correct_hard" in result:
+                    scores[f"{probe_name}_pcorrect_hard"] = result["p_correct_hard"]
                 # Log failed items for post-hoc scoring review
                 if "item_results" in result:
                     failures = [r for r in result["item_results"]

@@ -100,6 +100,101 @@ class BaseProbe(ABC):
         return 0.0
 
 
+class BaseLogprobProbe(BaseProbe):
+    """Base class for logprob-based probes. Zero decode steps — 1 forward pass per question.
+
+    Subclasses define ITEMS (list of dicts with "prompt", "answer", "difficulty")
+    and CHOICES (list of valid answer strings for logprob measurement).
+
+    Returns two scoring signals per question:
+      - argmax_correct: 1.0 if highest-probability choice matches answer, else 0.0
+      - p_correct: raw probability of the correct answer (continuous 0.0-1.0)
+
+    The result dict contains:
+      - score: argmax accuracy (for compatibility with existing heatmaps)
+      - p_correct: mean probability of correct answer (more sensitive signal)
+      - p_correct_easy / p_correct_hard: difficulty breakdown
+      - Per-item logprob details when log_responses=True
+    """
+    ITEMS: list[dict] = []
+    CHOICES: list[str] = []
+
+    def run(self, model) -> dict:
+        import math
+
+        items = self._limit(self.ITEMS)
+        choices = self.CHOICES
+
+        easy_argmax = []
+        hard_argmax = []
+        easy_pcorrect = []
+        hard_pcorrect = []
+        item_results = []
+
+        for item in items:
+            prompt = item["prompt"] + " Answer with one word."
+            expected = item["answer"].lower()
+            difficulty = item.get("difficulty", "hard")
+
+            # Get log probabilities for all choices
+            logprobs = model.get_logprobs(prompt, choices)
+
+            # Convert log probs to probabilities
+            probs = {}
+            for choice in choices:
+                lp = logprobs.get(choice, float('-inf'))
+                probs[choice] = math.exp(lp) if lp > -100 else 0.0
+
+            # Normalize to sum to 1 across choices
+            total = sum(probs.values())
+            if total > 0:
+                probs = {k: v / total for k, v in probs.items()}
+
+            # Mode 1: argmax accuracy
+            best_choice = max(probs, key=probs.get) if probs else ""
+            argmax_correct = 1.0 if best_choice == expected else 0.0
+
+            # Mode 2: probability of correct answer
+            p_correct = probs.get(expected, 0.0)
+
+            if difficulty == "easy":
+                easy_argmax.append(argmax_correct)
+                easy_pcorrect.append(p_correct)
+            else:
+                hard_argmax.append(argmax_correct)
+                hard_pcorrect.append(p_correct)
+
+            if self.log_responses:
+                item_results.append({
+                    "difficulty": difficulty,
+                    "prompt": item["prompt"][:100],
+                    "expected": expected,
+                    "argmax": best_choice,
+                    "argmax_correct": argmax_correct,
+                    "p_correct": round(p_correct, 4),
+                    "probs": {k: round(v, 4) for k, v in probs.items()},
+                })
+
+        all_argmax = easy_argmax + hard_argmax
+        all_pcorrect = easy_pcorrect + hard_pcorrect
+
+        result = {
+            # Mode 1: argmax accuracy (compatible with existing heatmap pipeline)
+            "score": sum(all_argmax) / len(all_argmax) if all_argmax else 0.0,
+            "easy_score": sum(easy_argmax) / len(easy_argmax) if easy_argmax else 0.0,
+            "hard_score": sum(hard_argmax) / len(hard_argmax) if hard_argmax else 0.0,
+            # Mode 2: probability tracking (more sensitive for circuit mapping)
+            "p_correct": sum(all_pcorrect) / len(all_pcorrect) if all_pcorrect else 0.0,
+            "p_correct_easy": sum(easy_pcorrect) / len(easy_pcorrect) if easy_pcorrect else 0.0,
+            "p_correct_hard": sum(hard_pcorrect) / len(hard_pcorrect) if hard_pcorrect else 0.0,
+            "n_easy": len(easy_argmax),
+            "n_hard": len(hard_argmax),
+        }
+        if item_results:
+            result["item_results"] = item_results
+        return result
+
+
 def register_probe(cls):
     """Class decorator — registers a probe by its .name attribute."""
     instance = cls()
