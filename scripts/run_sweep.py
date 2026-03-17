@@ -34,7 +34,8 @@ def main():
     parser.add_argument("--model", required=True, help="Model path or HuggingFace ID")
     parser.add_argument("--probes", nargs="+", default=["math", "eq"],
                         help=f"Probes to run. Use 'all' for all probes. Available: {ALL_PROBES}")
-    parser.add_argument("--output", default="results/latest", help="Output directory")
+    parser.add_argument("--output", default=None,
+                        help="Output directory (default: results/sweeps/{timestamp})")
     parser.add_argument("--max-layers", type=int, default=None,
                         help="Limit sweep to first N layers (for testing)")
     parser.add_argument("--min-layer", type=int, default=0,
@@ -75,6 +76,12 @@ def main():
         print(f"Warning: probes not found: {missing}")
         probes = [p for p in probes if p in available]
     
+    # Auto-generate timestamped output dir if not specified
+    if args.output is None:
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        args.output = f"results/sweeps/{timestamp}"
+
     print(f"Model: {args.model}")
     print(f"Probes: {probes}")
     print(f"Output: {args.output}")
