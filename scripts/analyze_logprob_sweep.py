@@ -38,11 +38,12 @@ def load_sweep(sweep_dir: Path) -> list[dict]:
 
 
 def extract_baseline(results: list[dict]) -> dict:
-    """Find baseline (0,0) scores."""
+    """Find baseline (0,0) scores. Merges across modes (dup/skip)."""
+    merged = {}
     for r in results:
         if r["i"] == 0 and r["j"] == 0:
-            return r["probe_scores"]
-    return {}
+            merged.update(r["probe_scores"])
+    return merged
 
 
 def get_probe_names(results: list[dict]) -> list[str]:
@@ -215,14 +216,19 @@ def analyze(results: list[dict],
             if not cat_keys:
                 continue
 
-            # Average psych delta across all probes per config
+            # Average psych delta across all probes per config.
+            # Only include configs that actually have psych data
+            # (skip configs without --psych that return 0.0 for all).
             cat_configs = []
             for r in configs:
                 deltas_for_cat = []
                 for key in cat_keys:
-                    d = r["probe_deltas"].get(key, 0.0)
-                    if isinstance(d, (int, float)):
-                        deltas_for_cat.append(d)
+                    # Check if this config actually has this key
+                    # (not just defaulting to 0.0)
+                    if key in r["probe_deltas"]:
+                        d = r["probe_deltas"][key]
+                        if isinstance(d, (int, float)):
+                            deltas_for_cat.append(d)
                 if deltas_for_cat:
                     mean_delta = sum(deltas_for_cat) / len(deltas_for_cat)
                     if abs(mean_delta) > 1e-6:  # skip near-zero
