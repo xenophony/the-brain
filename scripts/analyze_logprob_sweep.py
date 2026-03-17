@@ -199,6 +199,44 @@ def analyze(results: list[dict],
         if ranked_pc:
             pcorrect_highlights[probe] = ranked_pc[:10]
 
+    # --- Psych signal analysis ---
+    psych_categories = set()
+    for key in baseline:
+        # Keys look like: causal_logprob_psych_hedging
+        if "_psych_" in key:
+            cat = key.split("_psych_")[-1]
+            psych_categories.add(cat)
+
+    psych_highlights = {}  # category -> top configs with biggest delta
+    if psych_categories:
+        for cat in sorted(psych_categories):
+            # Find all psych keys for this category across probes
+            cat_keys = [k for k in baseline if k.endswith(f"_psych_{cat}")]
+            if not cat_keys:
+                continue
+
+            # Average psych delta across all probes per config
+            cat_configs = []
+            for r in configs:
+                deltas_for_cat = []
+                for key in cat_keys:
+                    d = r["probe_deltas"].get(key, 0.0)
+                    if isinstance(d, (int, float)):
+                        deltas_for_cat.append(d)
+                if deltas_for_cat:
+                    mean_delta = sum(deltas_for_cat) / len(deltas_for_cat)
+                    if abs(mean_delta) > 1e-6:  # skip near-zero
+                        cat_configs.append({
+                            "i": r["i"], "j": r["j"],
+                            "mean_delta": round(mean_delta, 8),
+                            "n_probes": len(deltas_for_cat),
+                        })
+
+            # Sort by absolute magnitude
+            cat_configs.sort(key=lambda x: abs(x["mean_delta"]), reverse=True)
+            if cat_configs:
+                psych_highlights[cat] = cat_configs[:10]
+
     return {
         "baseline": {k: round(v, 4) if isinstance(v, float) else v
                      for k, v in baseline.items()
@@ -211,6 +249,7 @@ def analyze(results: list[dict],
         "multi_drops": multi_drops[:20],
         "antagonistic": antagonistic[:20],
         "pcorrect_highlights": pcorrect_highlights,
+        "psych_highlights": psych_highlights,
         "target_configs": sorted(target_configs),
         "n_targets": len(target_configs),
     }
@@ -276,8 +315,28 @@ def generate_report(analysis: dict, output_dir: Path) -> str:
     lines.append(f"\n## Verification Targets\n")
     lines.append(f"**{analysis['n_targets']} unique configs** selected for generation verification.\n")
 
+    # Psych signal analysis
+    psych = analysis.get("psych_highlights", {})
+    if psych:
+        lines.append("## Psycholinguistic Signal\n")
+        lines.append("Mean psych vocab probability delta across all probes per config.")
+        lines.append("Positive = more of this signal, Negative = less.\n")
+        for cat, highlights in sorted(psych.items()):
+            lines.append(f"\n### psych_{cat}")
+            # Show top increases and top decreases
+            increases = [h for h in highlights if h["mean_delta"] > 0]
+            decreases = [h for h in highlights if h["mean_delta"] < 0]
+            if increases:
+                lines.append(f"  **Increases (layer manipulation adds {cat} signal):**")
+                for h in increases[:3]:
+                    lines.append(f"    ({h['i']},{h['j']}) mean_delta={h['mean_delta']:+.6f}")
+            if decreases:
+                lines.append(f"  **Decreases (layer manipulation removes {cat} signal):**")
+                for h in decreases[:3]:
+                    lines.append(f"    ({h['i']},{h['j']}) mean_delta={h['mean_delta']:+.6f}")
+
     # Emerging circuit map
-    lines.append("## Emerging Circuit Map\n")
+    lines.append("\n## Emerging Circuit Map\n")
     lines.append("Compile layer regions by domain from the booster data above.")
     lines.append("Look for convergent evidence: multiple probes pointing at the same layers.\n")
 
