@@ -52,8 +52,8 @@ def main():
     # Define circuit regions to test (from sweep data)
     regions = {
         "1-3": (1, 3),
-        "10-12": (10, 12),
-        "15-17": (15, 17),
+        "27-28": (27, 28),
+        "44-48": (44, 48),
     }
 
     # Build all combinations: individual, pairs, and triple
