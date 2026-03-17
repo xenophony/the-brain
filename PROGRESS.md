@@ -466,3 +466,58 @@ The (i,j) sweep is now a SCOUTING phase, not the main experiment:
   2. Compound path testing (targeted): test specific region combinations with generation probes on ~10-30 paths. Minutes.
   3. Generation verification (targeted): run full generation probes on only the ~83 configs logprobs flagged. ~1 hour.
 Next: domain-specific optimized paths → router → LoRA training on identified circuits.
+
+## Session 2 — Skip Sweep, Psych Capture, Compound Testing, Generation Verification
+
+### Infrastructure Built
+[--:--] DONE: Psycholinguistic vocab capture (14 categories: hedging, confidence, epistemic_uncertain/certain, causation, approximators, negation, absolutes, first_person, distancing, urgency, stress, multilingual_yes/no)
+[--:--] DONE: 4 psych validation probes: conflict, difficulty, unknowable, urgency
+[--:--] DONE: Cross-probe batched logprobs — all probes in one forward pass
+[--:--] DONE: Automated compound pipeline: build_compound_candidates → run_compound_logprobs → select_generation_targets
+[--:--] DONE: Generation verification runner with psych + logprob capture + sample responses
+[--:--] DONE: Layer map generator (per-layer domain function breakdown)
+[--:--] DONE: Psych signal analysis (correlation, correct/incorrect profiles, uncertainty detection)
+[--:--] DONE: Steering vector builder (capture, compute, inject, test)
+[--:--] DONE: Expanded probe items: math 50, eq 50, language 50 (from 16-24)
+[--:--] DONE: Code completion logprob probe
+
+### Sweep Data Collected
+[--:--] DONE: Full skip sweep — 19 logprob probes + psych, 402 configs (heavy pruning)
+[--:--] DONE: Full duplicate sweep — 19 logprob probes + psych, 1057 configs
+[--:--] DONE: Compound logprob testing — 209 candidate paths
+[--:--] DONE: Generation verification — 14 paths × 50 items × 2 repeats
+
+### Confirmed Findings (generation-verified, 50 items)
+[--:--] FINDING: Layer 2 x3 = universal improvement. Math +16%, pong_strategic +22%, eq +6%, pong_simple +12%. No degradation. 50 layers.
+[--:--] FINDING: Feedback 2→2→27-28 = best math path. Math +20%, pong_strategic +25%. 52 layers.
+[--:--] FINDING: Feedback 27-28→2 = best language path. Language +9%, pong_strategic +25%, math +7%. 77 layers.
+[--:--] FINDING: Layer 1 doubled DESTROYS everything. Every path with 1x2 degraded significantly. Layer 1 = translator, don't duplicate.
+[--:--] FINDING: skip(29-34) breaks generation despite improving logprobs. Model outputs Chinese (助手) — these layers are format/language switching circuits.
+[--:--] FINDING: Logprob and generation can diverge dramatically. Logprob "winner" (+1.97) scored -1.64 on generation.
+
+### Psycholinguistic Findings
+[--:--] FINDING: psych_hedging 5x higher when model correctly rejects false claims (hallucination probe)
+[--:--] FINDING: psych_approximators 21x higher on correct language configs
+[--:--] FINDING: Domain-specific reversal — high hedging = correct for reasoning tasks, high hedging = incorrect for classification tasks
+[--:--] FINDING: Multilingual psych signal correlates with spatial ability and predicts format-switching circuit activation
+[--:--] FINDING: Removing layers increases ALL psych signals (model becomes more "psychologically active" / less focused)
+[--:--] FINDING: No psych category decreases except multilingual — removing layers 32-48 specifically suppresses multilingual signal
+
+### Architectural Insights
+[--:--] FINDING: Layer 0-1 = input translators (human→model representation). Fragile to duplication.
+[--:--] FINDING: Layer 2 = first "thinking" layer. Stable, loop-tolerant, universal amplifier.
+[--:--] FINDING: Layer 2 onward tolerates 46-layer duplication (2,48) without collapse. Full refeed viable.
+[--:--] FINDING: Layers 29-34 = format/language switching (proven by Chinese output when skipped)
+[--:--] FINDING: Layers 44-48 = output verification. Improves hallucination logprob but kills math generation.
+[--:--] FINDING: Safety and performance trade off at circuit level — improving reasoning degrades hallucination resistance.
+[--:--] FINDING: MoE layers show oscillating skip sensitivity — paired routing/execution layers.
+
+### Steering Vector Results
+[--:--] FINDING: Static steering vectors at layer 2 = +0.006 (essentially nothing). Layer duplication works by re-computation, not by direction in activation space.
+
+### Unverified Hypotheses (for next session)
+- Dynamic activation steering using psych signal as trigger
+- Partial re-run from point of failure (layer where psych diverges)
+- Psycholinguistic best-of-N selection (generate candidates, pick by psych profile)
+- Layer 29-34 as general format-switching (code, multilingual, structured output)
+- Brevity signal in logprob distribution (verbosity tokens vs short-answer tokens)
