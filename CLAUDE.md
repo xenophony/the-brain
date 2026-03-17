@@ -324,11 +324,65 @@ Input prompt
 - Router code: `router/hierarchical.py`
 - Taxonomy: `analysis/taxonomy.py` (probe-to-domain mappings)
 
+## Current Workflow — Logprob-First Circuit Mapping
+
+The (i,j) sweep is now a scouting phase, not the main experiment:
+
+1. **Logprob sweep (fast scout)**: Run 15 logprob probes across all (i,j) configs.
+   ~15s/config on 5090. Identifies circuit regions via argmax accuracy + p_correct.
+   p_correct is more sensitive — detects sub-threshold effects binary scoring misses.
+
+2. **Compound path testing (targeted)**: Use test_compound_path.py to test specific
+   region combinations (--regions 1-3 27-28 44-48). Tests duplicates, skips, multi-pass.
+   Minutes, not hours. Results auto-saved with timestamps.
+
+3. **Generation verification (targeted)**: Run full generation probes on only the
+   configs logprobs flagged (--config-file targeted_configs.json). Confirms real
+   output improvement, not just probability shifts. ~1 hour for 83 configs.
+
+4. **Results processing**: Drop sweep JSONs in results/incoming/, run
+   process_results.py → merged analysis + heatmaps + CIRCUIT_FINDINGS.md.
+
+### Key Findings (Qwen3-30B-A3B)
+- **Layer 2**: Universal amplifier. Dup (2,3) improves 6 probes (+1.27 total).
+- **Layers 0-3**: Core reasoning hub (math, causal, judgement, routing, error).
+- **Layers 14-28**: Spatial processing. Dup (14,28) → pong +0.31.
+- **Layers 43-48**: Output verification. Hallucination +0.48 BUT kills math/temporal.
+- **Layers 9-25**: Sycophancy resistance (separate from reasoning).
+- **Temporal**: Immune to small changes, catastrophic on large duplications. Distributed/fragile.
+- **Antagonistic**: Hallucination vs temporal — can't optimize both. Validates domain-specific routing.
+- **Compound paths are sub-additive**: Dup 1-3 alone (math +0.17) beats any combination.
+- **Multi-pass saturates at x3**: Repeating a layer 4+ times degrades performance.
+
+### Logprob Probes (15 total)
+All use BaseLogprobProbe. Zero decode steps. Two signals: score (argmax) + p_correct (probability).
+Batched via get_logprobs_batch() and cross-probe batched in runner.
+
+| Probe | Choices | Baseline | Circuit Region |
+|-------|---------|----------|----------------|
+| causal_logprob | yes/no | 0.63 | layers 0-3 |
+| logic_logprob | yes/no | 0.63 | layers 0-3, 43-48 |
+| sentiment_logprob | positive/negative | 0.75 | layers 0-36 (broad) |
+| error_logprob | correct/incorrect | 0.50 | layers 0-46 (broad) |
+| judgement_logprob | correct/incorrect | 0.38 | layers 0-11 |
+| routing_logprob | 5 domains | 0.42 | layers 0-36 |
+| consistency_logprob | yes/no | 0.50 | layers 1-10 |
+| hallucination_logprob | yes/no | 0.33 | layers 43-48 |
+| sycophancy_logprob | custom | 0.41 | layers 9-25 |
+| language_logprob | grammatical/ungrammatical | 0.13 | layers 0-4, 43-48 |
+| implication_logprob | valid/invalid | 0.63 | layers 4-48 |
+| negation_logprob | true/false | 0.63 | layers 4-16 |
+| pong_simple_logprob | up/down/stay | 0.42 | layers 15-35 |
+| pong_strategic_logprob | up/down/stay | 0.38 | layers 13-33 |
+| temporal_logprob | a/b | 1.00 (ceiling) | immune (distributed) |
+
 ## Phase Roadmap
 
-- **Phase 1**: Circuit identification (current) — (i,j) sweep + heatmaps
-- **Phase 2**: Compound circuit analysis — synergistic/antagonistic/cascade/inhibitory
-- **Phase 3**: Hierarchical router training — L1/L2 classifiers from labeled data
-- **Phase 4**: Head/neuron level analysis — finer-grained circuit mapping
-- **Phase 5**: Memory hierarchy integration — persistent circuit knowledge
-- **Phase 6**: Dream cycle implementation — offline consolidation (REM + SWS phases)
+- **Phase 1**: Circuit identification ✅ — logprob sweep + heatmaps + compound testing
+- **Phase 2**: Compound circuit analysis ✅ — synergistic/antagonistic/cascade findings
+- **Phase 3**: Domain-specific optimized paths — skip harmful + duplicate beneficial per domain
+- **Phase 4**: Hierarchical router — classify input → select optimal layer path
+- **Phase 5**: Head/neuron level analysis — finer-grained circuit mapping within layers
+- **Phase 6**: LoRA training — fine-tune specific circuits identified by the map
+- **Phase 7**: Memory hierarchy integration — persistent circuit knowledge
+- **Phase 8**: Dream cycle implementation — offline consolidation (REM + SWS phases)

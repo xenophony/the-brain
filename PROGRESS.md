@@ -415,3 +415,54 @@ Estimated sweep time: ~17 hours (down from 137 hours with 20 probes × full item
 [--:--] DONE: OPT 2 — Single Params object per forward_with_path. Was creating ~98 Params per forward pass. Safe because config.no_graphs=True prevents CUDA graph caching. Applied to forward_with_path, forward_with_hooks, project_to_vocab.
 [--:--] DONE: OPT 3 — Think-close counter. Tracks how many times <think> force-close fires. Logged per probe in runner.py. Tells us if disrupted layer configs cause thinking to leak through.
 [--:--] DONE: CRITICAL — Fixed Qwen3 thinking leak with hard switch (pre-filled empty think block). REVERTED — hard switch degraded output quality, model produced verbose prose instead of terse answers. Back to /no_think soft switch. Force-close safety net remains.
+
+## Batched Inference
+[--:--] DONE: OPT 4 — Batched generation (generate_short_batch). Left-padded prefill + lockstep decode with per-item EOS tracking and think force-close. 8 items per batch. ~40% speedup on generation probes (115s → 42s/config).
+[--:--] DONE: OPT 5 — Batched logprobs (get_logprobs_batch). Single forward pass for all items, no decode. ~5x speedup over sequential logprobs.
+[--:--] DONE: OPT 6 — Cross-probe logprob batching in runner. Collects prompts from ALL logprob probes, groups by target tokens, runs mega-batches. 15 logprob probes in ~15s/config.
+[--:--] DONE: BaseProbe._run_items() helper for automatic batching in generation probes.
+[--:--] DONE: Batch cache (batch_size=8) allocated alongside single cache. config.max_batch_size=8.
+
+## Logprob Probe Framework
+[--:--] DONE: BaseLogprobProbe class — zero decode steps, 1 forward pass per question. Two scoring modes: argmax accuracy (score) + probability tracking (p_correct).
+[--:--] DONE: p_correct is MORE SENSITIVE than binary scoring — detects sub-threshold circuit effects where argmax doesn't flip but confidence shifts.
+[--:--] DONE: 15 logprob probes total:
+  - 5 from calibration: causal, temporal, logic, sentiment, error
+  - 7 converted from generation: language, pong_simple, pong_strategic, implication, negation, routing, judgement
+  - 3 safety proxies: consistency (verification), hallucination (confabulation), sycophancy (pressure resistance)
+[--:--] DONE: Calibration runner (run_calibration.py) — 120 one-word questions across 10 domains, tested against API to find sweet-spot accuracy (0.3-0.7).
+[--:--] DONE: Sweet spots found: causal (50%), temporal (67%), factual (67%), logic (75%).
+
+## Full Logprob Sweep — Results
+[--:--] DONE: Split across 2x 5090 GPUs. Machine 1: 8 reasoning logprob probes. Machine 2: 7 perception logprob probes. ~5 hours total.
+[--:--] DONE: Results merged with math generation data (16 probes total, 1177 configs).
+[--:--] DONE: 83 targeted configs identified for generation verification.
+[--:--] KEY FINDINGS:
+  - Layer 2 is a UNIVERSAL AMPLIFIER: dup (2,3) improves 6 probes simultaneously (+1.27 total delta). Confirmed by generation probes — real output improvement across math, eq, pong, language.
+  - Layers 0-3: core reasoning hub (math, causal, judgement, routing, error).
+  - Layers 14-28: spatial processing circuit. Dup (14,28) → pong_strategic +0.31.
+  - Layers 43-48: output verification. Dup (44,48) → hallucination +0.48 pcorrect. BUT destroys math/temporal — antagonistic circuit.
+  - Layers 9-19 → 19-31: sycophancy resistance circuit (completely separate from reasoning).
+  - Temporal reasoning: immune to small changes, catastrophic on large duplications (j=48). Distributed/fragile.
+  - ANTAGONISTIC: hallucination +0.54 vs temporal -1.00 on j=48 configs. Can't optimize both — validates need for domain-specific routing.
+
+## Compound Path Testing
+[--:--] DONE: test_compound_path.py — tests all combinations of circuit regions with generation + logprob probes. CLI-configurable regions (--regions), full items (--full), repeats (--repeats). Auto-saves timestamped results.
+[--:--] FINDING: Dup 1-3 alone gets math from 0.79 → 0.96. Adding more regions interferes — compound paths are sub-additive for math.
+[--:--] FINDING: Dup 14-28 is the spatial champion (+0.31 pong_strategic). Better than any single-layer duplicate.
+[--:--] FINDING: Dup 5-11 is spatial POISON (-0.25 both pong probes). Toxic in every combination.
+[--:--] FINDING: Layer amplification (multi-pass) saturates at x3 and degrades after x4. Neural fatigue effect.
+[--:--] FINDING: Skip 5-11 had minimal effect (0.25 → 0.19). Layers dispensable but not harmful when present.
+
+## Results Processing Pipeline
+[--:--] DONE: process_results.py — drop sweep JSONs in results/incoming/, run one command, get merged analysis + heatmaps + CIRCUIT_FINDINGS.md in results/analysis/. Files archived with timestamps.
+[--:--] DONE: analyze_logprob_sweep.py — 4-category analysis: boosters, synergies, skip candidates, antagonistic pairs. Plus pcorrect highlights.
+[--:--] DONE: --config-file flag in run_sweep.py — run generation probes on only the targeted configs from logprob analysis.
+[--:--] DONE: Auto-timestamped output dirs for sweeps (results/sweeps/{timestamp}/).
+
+## Phase Transition: Logprob-First Workflow
+The (i,j) sweep is now a SCOUTING phase, not the main experiment:
+  1. Logprob sweep (fast): 15 probes × 1176 configs in ~5 hours on 2 GPUs. Identifies circuit regions.
+  2. Compound path testing (targeted): test specific region combinations with generation probes on ~10-30 paths. Minutes.
+  3. Generation verification (targeted): run full generation probes on only the ~83 configs logprobs flagged. ~1 hour.
+Next: domain-specific optimized paths → router → LoRA training on identified circuits.
