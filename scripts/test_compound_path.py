@@ -49,14 +49,28 @@ def main():
     probe_names = args.probes
     normal_path = list(range(N))
 
-    # Define paths to test
-    paths = [
-        ("baseline", normal_path, [], []),
-        ("dup 1-3", None, [], [(1, 3)]),
-        ("dup 15-17", None, [], [(15, 17)]),
-        ("dup 1-3 + 15-17", None, [], [(1, 3), (15, 17)]),
-        ("dup 1-3 + 15-17 + 10-12", None, [], [(1, 3), (15, 17), (10, 12)]),
-    ]
+    # Define circuit regions to test (from sweep data)
+    regions = {
+        "1-3": (1, 3),
+        "10-12": (10, 12),
+        "15-17": (15, 17),
+    }
+
+    # Build all combinations: individual, pairs, and triple
+    from itertools import combinations
+    paths = [("baseline", normal_path, [], [])]
+
+    region_names = sorted(regions.keys())
+    # Singles
+    for name in region_names:
+        paths.append((f"dup {name}", None, [], [regions[name]]))
+    # Pairs
+    for combo in combinations(region_names, 2):
+        label = " + ".join(f"{c}" for c in combo)
+        paths.append((f"dup {label}", None, [], [regions[c] for c in combo]))
+    # Triple
+    label = " + ".join(region_names)
+    paths.append((f"dup {label}", None, [], [regions[c] for c in region_names]))
 
     results = []
     for label, explicit_path, skip_regions, dup_regions in paths:
