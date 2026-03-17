@@ -47,8 +47,12 @@ def get_probe_names(results: list[dict]) -> list[str]:
 
 def find_top_regions(results: list[dict], mode: str,
                      top_n: int = 5, min_delta: float = 0.10,
+                     max_block_size: int = 6,
                      ) -> dict:
     """Find top performing (i,j) regions per probe.
+
+    Filters by mode (duplicate/skip) and limits block size to avoid
+    overly broad regions that don't represent tight circuits.
 
     For duplicate mode: positive delta = good (amplify)
     For skip mode: positive delta = good (removing helps)
@@ -56,13 +60,22 @@ def find_top_regions(results: list[dict], mode: str,
     Returns {probe_name: [(i, j, delta, pcorrect_delta), ...]}
     """
     probes = get_probe_names(results)
-    configs = [r for r in results if not (r["i"] == 0 and r["j"] == 0)]
+    configs = [r for r in results
+               if not (r["i"] == 0 and r["j"] == 0)
+               and r.get("mode", "duplicate") == mode]
+
+    if not configs:
+        print(f"  WARNING: no configs found for mode={mode}")
+        return {}
 
     top_regions = {}
     for probe in probes:
         pc_key = f"{probe}_pcorrect"
         ranked = []
         for r in configs:
+            block_size = r["j"] - r["i"]
+            if block_size > max_block_size:
+                continue  # skip overly broad regions
             delta = r["probe_deltas"].get(probe, 0.0)
             pc_delta = r["probe_deltas"].get(pc_key, 0.0)
             if delta >= min_delta:
