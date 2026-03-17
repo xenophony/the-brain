@@ -66,6 +66,14 @@ PSYCH_VOCAB = {
         "dangerous", "risk", "threat", "warning", "careful",
         "caution", "harm", "fatal", "serious", "severe",
     ],
+    "multilingual_yes": [
+        "yes", "oui", "sí", "ja", "да", "sim", "はい", "evet",
+        "tak", "igen", "kyllä",
+    ],
+    "multilingual_no": [
+        "no", "non", "nein", "не", "нет", "não", "いいえ",
+        "hayır", "nie", "nem", "ei",
+    ],
 }
 
 
