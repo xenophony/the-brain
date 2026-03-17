@@ -126,9 +126,13 @@ def main():
                 if isinstance(base, (int, float)):
                     deltas[key] = round(scores[key] - base, 6)
 
-        # Combined delta (main probe scores only, not sub-fields)
+        # Compute ranking metrics from main probe deltas only
         main_probes = [p for p in probe_names if p in deltas]
-        combined_delta = sum(deltas.get(p, 0.0) for p in main_probes)
+        probe_deltas = [deltas.get(p, 0.0) for p in main_probes]
+        combined_delta = sum(probe_deltas)
+        min_delta = min(probe_deltas) if probe_deltas else 0.0
+        n_improved = sum(1 for d in probe_deltas if d > 0.01)
+        n_degraded = sum(1 for d in probe_deltas if d < -0.01)
 
         result = {
             "label": candidate["label"],
@@ -136,18 +140,23 @@ def main():
             "skip_regions": candidate.get("skip_regions", []),
             "n_layers": len(path),
             "combined_delta": round(combined_delta, 4),
+            "min_delta": round(min_delta, 4),
+            "n_improved": n_improved,
+            "n_degraded": n_degraded,
             "scores": scores,
             "deltas": deltas,
             "runtime": round(elapsed, 2),
         }
         results.append(result)
 
+        flag = " ***" if min_delta >= 0 and n_improved >= 3 else ""
         sign = "+" if combined_delta >= 0 else ""
         print(f"  [{idx+1}/{len(non_baseline)}] {candidate['label']:40s} "
-              f"delta={sign}{combined_delta:.4f} | {elapsed:.1f}s")
+              f"delta={sign}{combined_delta:.4f} min={min_delta:+.4f} "
+              f"({n_improved}↑ {n_degraded}↓){flag} | {elapsed:.1f}s")
 
-    # Sort by combined delta
-    results.sort(key=lambda x: x["combined_delta"], reverse=True)
+    # Sort by min_delta first (no degradation), then by combined
+    results.sort(key=lambda x: (x["min_delta"], x["combined_delta"]), reverse=True)
 
     # Save
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -168,21 +177,25 @@ def main():
     with open(out_file, "w") as f:
         json.dump(output, f, indent=2)
 
-    # Print top results
+    # Print top results — ranked by "no degradation + most improvement"
     print(f"\n{'='*60}")
-    print("TOP COMPOUND PATHS (by combined delta)")
+    print("SAFE PATHS (no probe degraded, ranked by improvement count)")
     print(f"{'='*60}")
-    for r in results[:15]:
-        sign = "+" if r["combined_delta"] >= 0 else ""
-        print(f"  {r['label']:40s} {sign}{r['combined_delta']:.4f} "
-              f"({r['n_layers']} layers)")
+    safe = [r for r in results if r["min_delta"] >= -0.01]
+    for r in safe[:15]:
+        print(f"  {r['label']:40s} min={r['min_delta']:+.4f} "
+              f"combined={r['combined_delta']:+.4f} "
+              f"({r['n_improved']}↑ {r['n_layers']}L)")
+    if not safe:
+        print("  None — all paths degrade at least one probe.")
 
     print(f"\n{'='*60}")
-    print("WORST COMPOUND PATHS")
+    print("BEST TRADEOFF PATHS (highest combined, accepting some degradation)")
     print(f"{'='*60}")
-    for r in results[-5:]:
-        sign = "+" if r["combined_delta"] >= 0 else ""
-        print(f"  {r['label']:40s} {sign}{r['combined_delta']:.4f}")
+    by_combined = sorted(results, key=lambda x: x["combined_delta"], reverse=True)
+    for r in by_combined[:10]:
+        print(f"  {r['label']:40s} combined={r['combined_delta']:+.4f} "
+              f"min={r['min_delta']:+.4f} ({r['n_improved']}↑ {r['n_degraded']}↓)")
 
     # Per-domain best
     print(f"\n{'='*60}")
