@@ -124,7 +124,7 @@ class BaseLogprobProbe(BaseProbe):
     ITEMS: list[dict] = []
     CHOICES: list[str] = []
     capture_psych: bool = False
-    _psych_words: list[str] | None = None  # cached flattened word list
+    _psych_words: list[str] | None = None  # cached flattened word list (class-level, cleared on vocab change)
 
     @classmethod
     def _get_psych_words(cls) -> list[str]:

@@ -58,6 +58,14 @@ PSYCH_VOCAB = {
     "distancing": [
         "one", "they", "people", "someone", "it", "this",
     ],
+    "urgency": [
+        "critical", "urgent", "important", "emergency", "immediately",
+        "crucial", "essential", "vital", "priority", "now",
+    ],
+    "stress": [
+        "dangerous", "risk", "threat", "warning", "careful",
+        "caution", "harm", "fatal", "serious", "severe",
+    ],
 }
 
 
