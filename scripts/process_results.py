@@ -172,14 +172,15 @@ def run_analysis(results: list[dict], output_dir: Path) -> None:
 
 
 def archive_files(files: list[Path]) -> None:
-    """Move processed files to archive with timestamps."""
+    """Move processed files to archive in a timestamped folder."""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
+    run_dir = ARCHIVE_DIR / timestamp
+    run_dir.mkdir(parents=True, exist_ok=True)
 
     for f in files:
-        dest = ARCHIVE_DIR / f"{timestamp}_{f.name}"
+        dest = run_dir / f.name
         shutil.move(str(f), str(dest))
-        print(f"  Archived: {f.name} -> {dest.name}")
+        print(f"  Archived: {f.name} -> {run_dir.name}/{f.name}")
 
 
 def main():
