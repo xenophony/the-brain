@@ -43,6 +43,7 @@ class SweepConfig:
     prune_threshold: float = -1.0       # delta threshold for catastrophic detection
     prune_consecutive: int = 2          # consecutive catastrophic configs before pruning
     config_list: Optional[list[tuple[int, int]]] = None  # explicit configs to run (overrides all_configs)
+    capture_psych: bool = False             # capture psycholinguistic signal from logprob probes
 
 
 @dataclass
@@ -158,6 +159,8 @@ class SweepRunner:
             if self.config.full_items:
                 probe.max_items = None
             probe.log_responses = True
+            if isinstance(probe, BaseLogprobProbe):
+                probe.capture_psych = self.config.capture_psych
 
             if isinstance(probe, BaseLogprobProbe) and hasattr(probe, 'get_prompts_and_targets'):
                 prompts, targets, items = probe.get_prompts_and_targets()
@@ -242,6 +245,10 @@ class SweepRunner:
                 scores[f"{probe_name}_pcorrect_easy"] = result["p_correct_easy"]
             if "p_correct_hard" in result:
                 scores[f"{probe_name}_pcorrect_hard"] = result["p_correct_hard"]
+            # Psycholinguistic signal fields
+            for key, val in result.items():
+                if key.startswith("psych_") and isinstance(val, (int, float)):
+                    scores[f"{probe_name}_{key}"] = val
             if "item_results" in result:
                 failures = [r for r in result["item_results"]
                             if r.get("score", 1.0) == 0.0]

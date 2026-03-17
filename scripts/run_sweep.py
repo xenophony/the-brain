@@ -65,6 +65,8 @@ def main():
     parser.add_argument("--config-file", type=str, default=None,
                         help="JSON file with specific (i,j) configs to run "
                              "(from analyze_logprob_sweep.py targeted_configs.json)")
+    parser.add_argument("--psych", action="store_true",
+                        help="Capture psycholinguistic signal from logprob probes (free data)")
 
     args = parser.parse_args()
     
@@ -150,6 +152,7 @@ def main():
         full_items=args.full,
         prune=not args.no_prune,
         config_list=config_list,
+        capture_psych=args.psych,
     )
 
     runner = SweepRunner(config, adapter_class=adapter_class)

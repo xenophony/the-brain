@@ -110,27 +110,57 @@ class BaseLogprobProbe(BaseProbe):
       - argmax_correct: 1.0 if highest-probability choice matches answer, else 0.0
       - p_correct: raw probability of the correct answer (continuous 0.0-1.0)
 
+    When capture_psych=True, also captures psycholinguistic signal:
+      - psych_{category}: mean probability mass per psych vocab category
+      These ride along on the same forward pass — zero extra cost.
+
     The result dict contains:
       - score: argmax accuracy (for compatibility with existing heatmaps)
       - p_correct: mean probability of correct answer (more sensitive signal)
       - p_correct_easy / p_correct_hard: difficulty breakdown
+      - psych_{category}: mean prob mass per psycholinguistic category (if enabled)
       - Per-item logprob details when log_responses=True
     """
     ITEMS: list[dict] = []
     CHOICES: list[str] = []
+    capture_psych: bool = False
+    _psych_words: list[str] | None = None  # cached flattened word list
+
+    @classmethod
+    def _get_psych_words(cls) -> list[str]:
+        """Get flattened, deduplicated psych vocab word list."""
+        if cls._psych_words is None:
+            from probes.psycholinguistics import PSYCH_VOCAB
+            words = set()
+            for word_list in PSYCH_VOCAB.values():
+                for w in word_list:
+                    words.add(w.lower())
+                    words.add(f" {w.lower()}")
+            cls._psych_words = sorted(words)
+        return cls._psych_words
 
     def get_prompts_and_targets(self) -> tuple[list[str], list[str], list[dict]]:
         """Return (prompts, target_tokens, items) for cross-probe batching.
 
-        The runner can collect prompts from multiple probes, batch them
-        in one forward pass, then call score_logprobs() with the results.
+        When capture_psych=True, target_tokens includes psych vocab words
+        so they ride along on the same forward pass.
         """
         items = self._limit(self.ITEMS)
         prompts = [item["prompt"] + " Answer with one word." for item in items]
-        return prompts, self.CHOICES, items
+        targets = list(self.CHOICES)
+        if self.capture_psych:
+            psych_words = self._get_psych_words()
+            # Add psych words that aren't already in choices
+            existing = set(targets)
+            targets.extend(w for w in psych_words if w not in existing)
+        return prompts, targets, items
 
     def score_logprobs(self, items: list[dict], all_logprobs: list[dict]) -> dict:
-        """Score pre-computed logprobs. Called by runner after cross-probe batch."""
+        """Score pre-computed logprobs. Called by runner after cross-probe batch.
+
+        When capture_psych=True, also extracts psycholinguistic signal from
+        the same logprob data (no extra forward pass).
+        """
         import math
 
         choices = self.CHOICES
@@ -139,6 +169,16 @@ class BaseLogprobProbe(BaseProbe):
         easy_pcorrect = []
         hard_pcorrect = []
         item_results = []
+
+        # Psych accumulation
+        psych_accum = {}  # category -> list of scores across items
+        if self.capture_psych:
+            try:
+                from probes.psycholinguistics import PSYCH_VOCAB
+                for cat in PSYCH_VOCAB:
+                    psych_accum[cat] = []
+            except Exception:
+                pass
 
         for item, logprobs in zip(items, all_logprobs):
             expected = item["answer"].lower()
@@ -164,6 +204,21 @@ class BaseLogprobProbe(BaseProbe):
                 hard_argmax.append(argmax_correct)
                 hard_pcorrect.append(p_correct)
 
+            # Psych scoring: sum probability mass per category from logprobs
+            if psych_accum:
+                try:
+                    from probes.psycholinguistics import PSYCH_VOCAB
+                    for cat, words in PSYCH_VOCAB.items():
+                        cat_mass = 0.0
+                        for w in words:
+                            for variant in [w.lower(), f" {w.lower()}"]:
+                                lp = logprobs.get(variant, float('-inf'))
+                                if lp > -100:
+                                    cat_mass += math.exp(lp)
+                        psych_accum[cat].append(cat_mass)
+                except Exception:
+                    pass
+
             if self.log_responses:
                 item_results.append({
                     "difficulty": difficulty,
@@ -172,7 +227,8 @@ class BaseLogprobProbe(BaseProbe):
                     "argmax": best_choice,
                     "argmax_correct": argmax_correct,
                     "p_correct": round(p_correct, 4),
-                    "probs": {k: round(v, 4) for k, v in probs.items()},
+                    "probs": {k: round(v, 4) for k, v in probs.items()
+                              if k in self.CHOICES},  # only choice probs in item log
                 })
 
         all_argmax = easy_argmax + hard_argmax
@@ -188,6 +244,12 @@ class BaseLogprobProbe(BaseProbe):
             "n_easy": len(easy_argmax),
             "n_hard": len(hard_argmax),
         }
+
+        # Add psych means to result
+        for cat, values in psych_accum.items():
+            if values:
+                result[f"psych_{cat}"] = sum(values) / len(values)
+
         if item_results:
             result["item_results"] = item_results
         return result
