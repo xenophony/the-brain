@@ -23,6 +23,23 @@ EASY_ITEMS = [
     {"sentence": "She is more taller than her older sister.", "label": "ungrammatical"},
     # --- Clear grammatical ---
     {"sentence": "The committee has decided to postpone the meeting.", "label": "grammatical"},
+    {"sentence": "Me and him went to the park after school.", "label": "ungrammatical"},
+    {"sentence": "The dog chased it own tail around the yard.", "label": "ungrammatical"},
+    {"sentence": "She have been waiting for over an hour now.", "label": "ungrammatical"},
+    {"sentence": "There is many reasons to be optimistic about the future.", "label": "ungrammatical"},
+    {"sentence": "He runned all the way to the finish line.", "label": "ungrammatical"},
+    {"sentence": "The cats meowed loudly because it were hungry.", "label": "ungrammatical"},
+    {"sentence": "Her and me decided to split the dessert.", "label": "ungrammatical"},
+    {"sentence": "Each student must bring their own pencil to the exam.", "label": "grammatical"},
+    {"sentence": "The professor explained the theory clearly and concisely.", "label": "grammatical"},
+    {"sentence": "We have been living in this city for five years.", "label": "grammatical"},
+    {"sentence": "The birds flew south before the first frost arrived.", "label": "grammatical"},
+    {"sentence": "Running through the forest, she felt completely free.", "label": "grammatical"},
+    {"sentence": "Neither option appeals to me at this point.", "label": "grammatical"},
+    {"sentence": "The children were excited about the upcoming field trip.", "label": "grammatical"},
+    {"sentence": "She suggested that we leave before the storm hits.", "label": "grammatical"},
+    {"sentence": "He don't know nothing about what happened last night.", "label": "ungrammatical"},
+    {"sentence": "The furnitures in the office need to be replaced.", "label": "ungrammatical"},
 ]
 
 HARD_ITEMS = [
@@ -36,6 +53,23 @@ HARD_ITEMS = [
     # --- Subtle ungrammatical ---
     {"sentence": "The team are going to their separate homes tonight.", "label": "grammatical"},
     {"sentence": "Between you and I, this project is failing.", "label": "ungrammatical"},
+    {"sentence": "The horse raced past the barn fell.", "label": "grammatical"},
+    {"sentence": "The man who the woman who the child saw greeted left.", "label": "grammatical"},
+    {"sentence": "If I were you, I would reconsider that decision.", "label": "grammatical"},
+    {"sentence": "It is essential that he be present at the hearing.", "label": "grammatical"},
+    {"sentence": "The data suggests that our hypothesis were correct.", "label": "ungrammatical"},
+    {"sentence": "Whom did the committee decide should lead the project?", "label": "ungrammatical"},
+    {"sentence": "The number of students who has passed the exam is rising.", "label": "ungrammatical"},
+    {"sentence": "She insisted that the report is submitted by Friday.", "label": "ungrammatical"},
+    {"sentence": "The fact that that explanation was accepted surprised everyone.", "label": "grammatical"},
+    {"sentence": "More people than ever before are working from home.", "label": "grammatical"},
+    {"sentence": "What he said and what he did was two different things.", "label": "ungrammatical"},
+    {"sentence": "The student who the teacher that the principal hired taught passed.", "label": "grammatical"},
+    {"sentence": "Time flies like an arrow; fruit flies like a banana.", "label": "grammatical"},
+    {"sentence": "The old man the boats when the young sailors are away.", "label": "grammatical"},
+    {"sentence": "Not only did she win the race, but she also set a record.", "label": "grammatical"},
+    {"sentence": "The reason is because he forgot to set his alarm.", "label": "ungrammatical"},
+    {"sentence": "Neither the teacher nor the students was able to solve it.", "label": "ungrammatical"},
 ]
 
 # Legacy alias

@@ -16,6 +16,23 @@ EASY_ITEMS = [
     {"prompt": "What is 3^5? Answer with only the number.", "answer": 243},
     {"prompt": "What is the GCD of 48 and 36? Answer with only the number.", "answer": 12},
     {"prompt": "What is the 7th prime number? Answer with only the number.", "answer": 17},
+    {"prompt": "What is 45 + 78? Answer with only the number.", "answer": 123},
+    {"prompt": "What is 200 - 137? Answer with only the number.", "answer": 63},
+    {"prompt": "What is 25 * 4? Answer with only the number.", "answer": 100},
+    {"prompt": "What is 360 / 9? Answer with only the number.", "answer": 40},
+    {"prompt": "What is 50% of 84? Answer with only the number.", "answer": 42},
+    {"prompt": "What is 11 squared? Answer with only the number.", "answer": 121},
+    {"prompt": "What is the square root of 169? Answer with only the number.", "answer": 13},
+    {"prompt": "What is 7 * 8 * 2? Answer with only the number.", "answer": 112},
+    {"prompt": "What is 1000 - 625? Answer with only the number.", "answer": 375},
+    {"prompt": "What is 33 + 67 + 100? Answer with only the number.", "answer": 200},
+    {"prompt": "What is 15% of 200? Answer with only the number.", "answer": 30},
+    {"prompt": "What is 2^8? Answer with only the number.", "answer": 256},
+    {"prompt": "How many sides does a hexagon have? Answer with only the number.", "answer": 6},
+    {"prompt": "What is the perimeter of a square with side 9? Answer with only the number.", "answer": 36},
+    {"prompt": "What is 81 / 3? Answer with only the number.", "answer": 27},
+    {"prompt": "What is 14 * 11? Answer with only the number.", "answer": 154},
+    {"prompt": "What is the next number in the sequence 2, 4, 8, 16? Answer with only the number.", "answer": 32},
 ]
 
 HARD_ITEMS = [
@@ -36,6 +53,15 @@ HARD_ITEMS = [
     {"prompt": "A train leaves at 9:15 AM and arrives at 11:45 AM. How many minutes is the journey? Answer with only the number.", "answer": 150},
     {"prompt": "A factory produces 350 widgets per hour. How many widgets in 4 hours? Answer with only the number.", "answer": 1400},
     {"prompt": "If a shirt costs $80 after a 20% discount, what was the original price in dollars? Answer with only the number.", "answer": 100},
+    {"prompt": "How many ways can you choose 2 items from a group of 6? Answer with only the number.", "answer": 15},
+    {"prompt": "A circular pizza is cut into 8 equal slices. How many degrees is each slice? Answer with only the number.", "answer": 45},
+    {"prompt": "What is 13 * 17? Answer with only the number.", "answer": 221},
+    {"prompt": "A pool fills at 3 gallons per minute. How many gallons after 45 minutes? Answer with only the number.", "answer": 135},
+    {"prompt": "If you invest $1000 at 10% simple interest for 3 years, what is the total interest earned in dollars? Answer with only the number.", "answer": 300},
+    {"prompt": "What is the sum of interior angles of a hexagon in degrees? Answer with only the number.", "answer": 720},
+    {"prompt": "A bookshelf has 5 shelves with 12 books each. You remove 17 books. How many remain? Answer with only the number.", "answer": 43},
+    {"prompt": "What is the 10th term of the arithmetic sequence 3, 7, 11, 15, ...? Answer with only the number.", "answer": 39},
+    {"prompt": "How many distinct ways can you arrange the letters in the word CAT? Answer with only the number.", "answer": 6},
 ]
 
 # Legacy alias for backward compatibility

@@ -77,6 +77,142 @@ EASY_ITEMS = [
         ),
         "expected": 8,
     },
+    {
+        "prompt": (
+            "You receive news that a close family member has been in a serious car accident. "
+            "How intensely would you feel fear on a scale of 0 (none) to 9 (extreme)? "
+            "Answer with only a digit."
+        ),
+        "expected": 9,
+    },
+    {
+        "prompt": (
+            "You open your mailbox and find a handwritten thank-you letter from a student you mentored years ago. "
+            "How intensely would you feel warmth on a scale of 0 (none) to 9 (extreme)? "
+            "Answer with only a digit."
+        ),
+        "expected": 8,
+    },
+    {
+        "prompt": (
+            "Your dog greets you at the door after a long day at work, tail wagging. "
+            "How intensely would you feel happiness on a scale of 0 (none) to 9 (extreme)? "
+            "Answer with only a digit."
+        ),
+        "expected": 7,
+    },
+    {
+        "prompt": (
+            "You are fired from your job without warning on a Monday morning. "
+            "How intensely would you feel shock on a scale of 0 (none) to 9 (extreme)? "
+            "Answer with only a digit."
+        ),
+        "expected": 9,
+    },
+    {
+        "prompt": (
+            "Your best friend throws you a surprise birthday party with all your loved ones. "
+            "How intensely would you feel delight on a scale of 0 (none) to 9 (extreme)? "
+            "Answer with only a digit."
+        ),
+        "expected": 8,
+    },
+    {
+        "prompt": (
+            "A coworker publicly mocks your accent during a team meeting. "
+            "How intensely would you feel humiliation on a scale of 0 (none) to 9 (extreme)? "
+            "Answer with only a digit."
+        ),
+        "expected": 8,
+    },
+    {
+        "prompt": (
+            "You watch a documentary about children suffering from famine. "
+            "How intensely would you feel sadness on a scale of 0 (none) to 9 (extreme)? "
+            "Answer with only a digit."
+        ),
+        "expected": 8,
+    },
+    {
+        "prompt": (
+            "You finally pay off your student loans after ten years of payments. "
+            "How intensely would you feel relief on a scale of 0 (none) to 9 (extreme)? "
+            "Answer with only a digit."
+        ),
+        "expected": 9,
+    },
+    {
+        "prompt": (
+            "Your neighbor's loud music wakes you up at 3 AM for the third night in a row. "
+            "How intensely would you feel irritation on a scale of 0 (none) to 9 (extreme)? "
+            "Answer with only a digit."
+        ),
+        "expected": 8,
+    },
+    {
+        "prompt": (
+            "You find out your sibling has been secretly helping your elderly parents with bills. "
+            "How intensely would you feel admiration on a scale of 0 (none) to 9 (extreme)? "
+            "Answer with only a digit."
+        ),
+        "expected": 7,
+    },
+    {
+        "prompt": (
+            "You witness a stranger yelling at a small child in a parking lot. "
+            "How intensely would you feel outrage on a scale of 0 (none) to 9 (extreme)? "
+            "Answer with only a digit."
+        ),
+        "expected": 8,
+    },
+    {
+        "prompt": (
+            "You get accepted into your dream graduate program after two previous rejections. "
+            "How intensely would you feel elation on a scale of 0 (none) to 9 (extreme)? "
+            "Answer with only a digit."
+        ),
+        "expected": 9,
+    },
+    {
+        "prompt": (
+            "A friend cancels plans with you last minute for the fifth time. "
+            "How intensely would you feel disappointment on a scale of 0 (none) to 9 (extreme)? "
+            "Answer with only a digit."
+        ),
+        "expected": 7,
+    },
+    {
+        "prompt": (
+            "You accidentally break your grandmother's antique vase that she treasured. "
+            "How intensely would you feel guilt on a scale of 0 (none) to 9 (extreme)? "
+            "Answer with only a digit."
+        ),
+        "expected": 8,
+    },
+    {
+        "prompt": (
+            "You hold your newborn baby for the first time. "
+            "How intensely would you feel love on a scale of 0 (none) to 9 (extreme)? "
+            "Answer with only a digit."
+        ),
+        "expected": 9,
+    },
+    {
+        "prompt": (
+            "A spider crawls across your pillow as you are about to sleep. "
+            "How intensely would you feel disgust on a scale of 0 (none) to 9 (extreme)? "
+            "Answer with only a digit."
+        ),
+        "expected": 7,
+    },
+    {
+        "prompt": (
+            "Your flight is delayed by 6 hours and you miss an important event. "
+            "How intensely would you feel frustration on a scale of 0 (none) to 9 (extreme)? "
+            "Answer with only a digit."
+        ),
+        "expected": 8,
+    },
 ]
 
 HARD_ITEMS = [
@@ -143,6 +279,142 @@ HARD_ITEMS = [
             "Answer with only a digit."
         ),
         "expected": 6,
+    },
+    {
+        "prompt": (
+            "You see an old couple holding hands on a park bench. "
+            "How intensely would you feel nostalgia on a scale of 0 (none) to 9 (extreme)? "
+            "Answer with only a digit."
+        ),
+        "expected": 4,
+    },
+    {
+        "prompt": (
+            "A friend achieves something you have been failing at for years. "
+            "How intensely would you feel envy on a scale of 0 (none) to 9 (extreme)? "
+            "Answer with only a digit."
+        ),
+        "expected": 5,
+    },
+    {
+        "prompt": (
+            "You are praised publicly for a project, but you know a teammate did most of the work. "
+            "How intensely would you feel discomfort on a scale of 0 (none) to 9 (extreme)? "
+            "Answer with only a digit."
+        ),
+        "expected": 6,
+    },
+    {
+        "prompt": (
+            "You complete a routine errand like buying groceries on a normal day. "
+            "How intensely would you feel excitement on a scale of 0 (none) to 9 (extreme)? "
+            "Answer with only a digit."
+        ),
+        "expected": 1,
+    },
+    {
+        "prompt": (
+            "Your manager gives you neutral feedback that is neither positive nor negative. "
+            "How intensely would you feel anxiety on a scale of 0 (none) to 9 (extreme)? "
+            "Answer with only a digit."
+        ),
+        "expected": 3,
+    },
+    {
+        "prompt": (
+            "You learn that someone you dislike has suffered a serious misfortune. "
+            "How intensely would you feel satisfaction on a scale of 0 (none) to 9 (extreme)? "
+            "Answer with only a digit."
+        ),
+        "expected": 3,
+    },
+    {
+        "prompt": (
+            "You are about to give a speech to a large audience but feel well-prepared. "
+            "How intensely would you feel nervousness on a scale of 0 (none) to 9 (extreme)? "
+            "Answer with only a digit."
+        ),
+        "expected": 4,
+    },
+    {
+        "prompt": (
+            "A distant relative you barely know passes away at an old age. "
+            "How intensely would you feel grief on a scale of 0 (none) to 9 (extreme)? "
+            "Answer with only a digit."
+        ),
+        "expected": 3,
+    },
+    {
+        "prompt": (
+            "You discover that a charity you donated to generously has been misusing funds. "
+            "How intensely would you feel betrayal on a scale of 0 (none) to 9 (extreme)? "
+            "Answer with only a digit."
+        ),
+        "expected": 6,
+    },
+    {
+        "prompt": (
+            "You overhear coworkers laughing but you are unsure if they are laughing about you. "
+            "How intensely would you feel insecurity on a scale of 0 (none) to 9 (extreme)? "
+            "Answer with only a digit."
+        ),
+        "expected": 4,
+    },
+    {
+        "prompt": (
+            "You receive a promotion but it means relocating away from your family. "
+            "How intensely would you feel conflicted on a scale of 0 (none) to 9 (extreme)? "
+            "Answer with only a digit."
+        ),
+        "expected": 7,
+    },
+    {
+        "prompt": (
+            "A former bully from school sincerely apologizes to you twenty years later. "
+            "How intensely would you feel moved on a scale of 0 (none) to 9 (extreme)? "
+            "Answer with only a digit."
+        ),
+        "expected": 5,
+    },
+    {
+        "prompt": (
+            "You watch a sunset alone after completing a difficult personal goal. "
+            "How intensely would you feel serenity on a scale of 0 (none) to 9 (extreme)? "
+            "Answer with only a digit."
+        ),
+        "expected": 6,
+    },
+    {
+        "prompt": (
+            "Your teenager says they hate you during an argument about curfew. "
+            "How intensely would you feel hurt on a scale of 0 (none) to 9 (extreme)? "
+            "Answer with only a digit."
+        ),
+        "expected": 5,
+    },
+    {
+        "prompt": (
+            "You realize you forgot to call your mother on her birthday. "
+            "How intensely would you feel regret on a scale of 0 (none) to 9 (extreme)? "
+            "Answer with only a digit."
+        ),
+        "expected": 6,
+    },
+    {
+        "prompt": (
+            "A stranger smiles at you warmly on an otherwise gloomy day. "
+            "How intensely would you feel uplift on a scale of 0 (none) to 9 (extreme)? "
+            "Answer with only a digit."
+        ),
+        "expected": 4,
+    },
+    {
+        "prompt": (
+            "You find out your partner planned a vacation without telling you, and you dislike the destination. "
+            "How intensely would you feel irritation on a scale of 0 (none) to 9 (extreme)? "
+            "Answer with only a digit."
+        ),
+        "expected": 5,
     },
 ]
 
