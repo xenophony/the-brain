@@ -49,31 +49,40 @@ def main():
     probe_names = args.probes
     normal_path = list(range(N))
 
-    # Define circuit regions to test (from sweep data)
-    # Granular: individual layers + key combinations
-    regions = {
-        "1-2": (1, 2),
-        "2-3": (2, 3),
-        "1-3": (1, 3),
-        "27-28": (27, 28),
-        "44-48": (44, 48),
-    }
-
-    # Build all combinations: individual, pairs, and triple
-    from itertools import combinations
+    # Multi-pass circuit amplification test
+    # Run specific layers multiple times to see if effects scale
     paths = [("baseline", normal_path, [], [])]
 
-    region_names = sorted(regions.keys())
-    # Singles
-    for name in region_names:
-        paths.append((f"dup {name}", None, [], [regions[name]]))
-    # Pairs
-    for combo in combinations(region_names, 2):
-        label = " + ".join(f"{c}" for c in combo)
-        paths.append((f"dup {label}", None, [], [regions[c] for c in combo]))
-    # Triple
-    label = " + ".join(region_names)
-    paths.append((f"dup {label}", None, [], [regions[c] for c in region_names]))
+    # Layer 27 through spatial circuit 1x, 2x, 3x, 4x, 5x
+    for repeats in range(1, 6):
+        label = f"27-28 x{repeats}"
+        # Build path manually: normal path but layer 27 repeated
+        path = list(range(N))
+        # Insert extra copies of layer 27 right after its normal position
+        insert_pos = 28  # after layer 27 in the normal path
+        for _ in range(repeats - 1):  # -1 because it already runs once
+            path.insert(insert_pos, 27)
+        paths.append((label, path, [], []))
+
+    # Also test layer 1 (reasoning) multi-pass for comparison
+    for repeats in range(1, 6):
+        label = f"1-2 x{repeats}"
+        path = list(range(N))
+        insert_pos = 2
+        for _ in range(repeats - 1):
+            path.insert(insert_pos, 1)
+        paths.append((label, path, [], []))
+
+    # Combined: spatial 27 x3 + reasoning 1 x3
+    path = list(range(N))
+    # Insert layer 1 copies
+    for _ in range(2):
+        path.insert(2, 1)
+    # Find where 27 is now and insert copies after it
+    idx_27 = path.index(27)
+    for _ in range(2):
+        path.insert(idx_27 + 1, 27)
+    paths.append(("1 x3 + 27 x3", path, [], []))
 
     results = []
     for label, explicit_path, skip_regions, dup_regions in paths:
