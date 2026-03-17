@@ -38,14 +38,37 @@ def capture_activations(model, probe_name, target_layers, max_items=None):
     probe = get_probe(probe_name)
     mod = importlib.import_module(f"probes.{probe_name}.probe")
 
-    easy_items = list(getattr(mod, "EASY_ITEMS", []))
-    hard_items = list(getattr(mod, "HARD_ITEMS", []))
-    all_items = easy_items + hard_items
+    # Load items — check probe instance for ITEMS (logprob) or module for EASY/HARD
+    if hasattr(probe_instance, 'ITEMS') and probe_instance.ITEMS:
+        all_items = list(probe_instance.ITEMS)
+    else:
+        easy_items = list(getattr(mod, "EASY_ITEMS", []))
+        hard_items = list(getattr(mod, "HARD_ITEMS", []))
+        all_items = easy_items + hard_items
     if max_items:
         all_items = all_items[:max_items]
 
     # Get the prompt function and score function based on probe type
-    if probe_name == "math":
+    # Generation probes: use generate_short + scoring function
+    # Logprob probes: use get_logprobs + argmax check
+    from probes.registry import BaseLogprobProbe
+    probe_instance = get_probe(probe_name)
+    is_logprob = isinstance(probe_instance, BaseLogprobProbe)
+
+    if is_logprob:
+        choices = probe_instance.CHOICES
+        make_prompt = lambda item: item["prompt"] + " Answer with one word."
+        def score_fn(resp_or_logprobs, item):
+            # For logprob probes, resp is actually a logprobs dict
+            import math as _math
+            expected = item["answer"].lower()
+            probs = {}
+            for c in choices:
+                lp = resp_or_logprobs.get(c, float('-inf'))
+                probs[c] = _math.exp(lp) if lp > -100 else 0.0
+            best = max(probs, key=probs.get) if probs else ""
+            return 1.0 if best == expected else 0.0
+    elif probe_name == "math":
         from probes.math.probe import score_math
         make_prompt = lambda item: item["prompt"]
         score_fn = lambda resp, item: score_math(resp, item["answer"])
@@ -77,13 +100,19 @@ def capture_activations(model, probe_name, target_layers, max_items=None):
 
         model.forward_with_hooks(prompt, hook_fn)
 
-        # Generate answer for scoring
-        response = model.generate_short(prompt, max_new_tokens=15)
-        score = score_fn(response, item)
+        # Score: generate for gen probes, logprobs for logprob probes
+        if is_logprob:
+            logprobs = model.get_logprobs(prompt, choices)
+            score = score_fn(logprobs, item)
+            response_str = str({k: round(v, 3) for k, v in logprobs.items()
+                               if k in choices})
+        else:
+            response_str = model.generate_short(prompt, max_new_tokens=15)
+            score = score_fn(response_str, item)
 
         results.append({
             "prompt": prompt[:100],
-            "response": response[:100],
+            "response": response_str[:100],
             "score": score,
             "correct": score > 0.5,
             "activations": layer_activations,
