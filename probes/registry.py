@@ -119,45 +119,42 @@ class BaseLogprobProbe(BaseProbe):
     ITEMS: list[dict] = []
     CHOICES: list[str] = []
 
-    def run(self, model) -> dict:
+    def get_prompts_and_targets(self) -> tuple[list[str], list[str], list[dict]]:
+        """Return (prompts, target_tokens, items) for cross-probe batching.
+
+        The runner can collect prompts from multiple probes, batch them
+        in one forward pass, then call score_logprobs() with the results.
+        """
+        items = self._limit(self.ITEMS)
+        prompts = [item["prompt"] + " Answer with one word." for item in items]
+        return prompts, self.CHOICES, items
+
+    def score_logprobs(self, items: list[dict], all_logprobs: list[dict]) -> dict:
+        """Score pre-computed logprobs. Called by runner after cross-probe batch."""
         import math
 
-        items = self._limit(self.ITEMS)
         choices = self.CHOICES
-
         easy_argmax = []
         hard_argmax = []
         easy_pcorrect = []
         hard_pcorrect = []
         item_results = []
 
-        # Batch all logprob calls in one forward pass
-        prompts = [item["prompt"] + " Answer with one word." for item in items]
-        if hasattr(model, 'get_logprobs_batch') and len(prompts) > 1:
-            all_logprobs = model.get_logprobs_batch(prompts, choices)
-        else:
-            all_logprobs = [model.get_logprobs(p, choices) for p in prompts]
-
         for item, logprobs in zip(items, all_logprobs):
             expected = item["answer"].lower()
             difficulty = item.get("difficulty", "hard")
 
-            # Convert log probs to probabilities
             probs = {}
             for choice in choices:
                 lp = logprobs.get(choice, float('-inf'))
                 probs[choice] = math.exp(lp) if lp > -100 else 0.0
 
-            # Normalize to sum to 1 across choices
             total = sum(probs.values())
             if total > 0:
                 probs = {k: v / total for k, v in probs.items()}
 
-            # Mode 1: argmax accuracy
             best_choice = max(probs, key=probs.get) if probs else ""
             argmax_correct = 1.0 if best_choice == expected else 0.0
-
-            # Mode 2: probability of correct answer
             p_correct = probs.get(expected, 0.0)
 
             if difficulty == "easy":
@@ -182,11 +179,9 @@ class BaseLogprobProbe(BaseProbe):
         all_pcorrect = easy_pcorrect + hard_pcorrect
 
         result = {
-            # Mode 1: argmax accuracy (compatible with existing heatmap pipeline)
             "score": sum(all_argmax) / len(all_argmax) if all_argmax else 0.0,
             "easy_score": sum(easy_argmax) / len(easy_argmax) if easy_argmax else 0.0,
             "hard_score": sum(hard_argmax) / len(hard_argmax) if hard_argmax else 0.0,
-            # Mode 2: probability tracking (more sensitive for circuit mapping)
             "p_correct": sum(all_pcorrect) / len(all_pcorrect) if all_pcorrect else 0.0,
             "p_correct_easy": sum(easy_pcorrect) / len(easy_pcorrect) if easy_pcorrect else 0.0,
             "p_correct_hard": sum(hard_pcorrect) / len(hard_pcorrect) if hard_pcorrect else 0.0,
@@ -196,6 +191,17 @@ class BaseLogprobProbe(BaseProbe):
         if item_results:
             result["item_results"] = item_results
         return result
+
+    def run(self, model) -> dict:
+        """Standalone run — used when not cross-probe batched by the runner."""
+        prompts, choices, items = self.get_prompts_and_targets()
+
+        if hasattr(model, 'get_logprobs_batch') and len(prompts) > 1:
+            all_logprobs = model.get_logprobs_batch(prompts, choices)
+        else:
+            all_logprobs = [model.get_logprobs(p, choices) for p in prompts]
+
+        return self.score_logprobs(items, all_logprobs)
 
 
 def register_probe(cls):

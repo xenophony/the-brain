@@ -29,6 +29,7 @@ class SweepConfig:
     output_dir: str
     probe_names: list[str]
     max_layers: Optional[int] = None   # None = sweep all
+    min_layer: int = 0                 # start sweep from this layer index
     min_block_size: int = 1            # minimum j-i to test
     max_block_size: Optional[int] = None
     baseline_first: bool = True        # always run (0,0) baseline first
@@ -41,6 +42,7 @@ class SweepConfig:
     prune: bool = True                  # adaptive catastrophic pruning
     prune_threshold: float = -1.0       # delta threshold for catastrophic detection
     prune_consecutive: int = 2          # consecutive catastrophic configs before pruning
+    config_list: Optional[list[tuple[int, int]]] = None  # explicit configs to run (overrides all_configs)
 
 
 @dataclass
@@ -130,25 +132,82 @@ class SweepRunner:
         return before + after
 
     def run_probes(self, layer_path: list[int]) -> dict[str, float]:
-        """Run all configured probes on the given layer path, with optional timeout."""
-        from probes.registry import get_probe
+        """Run all configured probes on the given layer path.
+
+        Logprob probes are cross-batched: all prompts from all logprob
+        probes are collected, run in one mega-batch forward pass, then
+        results are distributed back for per-probe scoring. This
+        amortizes the 48-layer forward pass across all logprob items.
+
+        Generation probes run sequentially after the logprob batch.
+        """
+        from probes.registry import get_probe, BaseLogprobProbe
 
         scores = {}
         self.model.set_layer_path(layer_path)
 
         timeout = self.config.timeout_seconds
-
-        # Detect GPU adapter — CUDA ops cannot run in non-main threads
         is_gpu = hasattr(self.model, '_model') and self.model._model is not None
+
+        # Separate logprob probes (batchable) from generation probes
+        logprob_probes = []  # (name, probe, prompts, targets, items)
+        gen_probe_names = []
 
         for probe_name in self.config.probe_names:
             probe = get_probe(probe_name)
             if self.config.full_items:
                 probe.max_items = None
-            probe.log_responses = True  # capture responses for failure review
+            probe.log_responses = True
+
+            if isinstance(probe, BaseLogprobProbe) and hasattr(probe, 'get_prompts_and_targets'):
+                prompts, targets, items = probe.get_prompts_and_targets()
+                logprob_probes.append((probe_name, probe, prompts, targets, items))
+            else:
+                gen_probe_names.append(probe_name)
+
+        # --- Cross-probe logprob batch ---
+        if logprob_probes and hasattr(self.model, 'get_logprobs_batch'):
+            # Collect all prompts and track which belong to which probe.
+            # Group by target_tokens (probes with same choices can share a batch).
+            target_groups = {}  # frozenset(targets) -> [(name, probe, prompts, items)]
+            for name, probe, prompts, targets, items in logprob_probes:
+                key = tuple(sorted(targets))
+                if key not in target_groups:
+                    target_groups[key] = {"targets": targets, "entries": []}
+                target_groups[key]["entries"].append((name, probe, prompts, items))
+
+            for key, group in target_groups.items():
+                targets = group["targets"]
+                all_prompts = []
+                slices = []  # (name, probe, items, start, end)
+                for name, probe, prompts, items in group["entries"]:
+                    start = len(all_prompts)
+                    all_prompts.extend(prompts)
+                    end = len(all_prompts)
+                    slices.append((name, probe, items, start, end))
+
+                # One mega-batch forward pass for this target group
+                all_logprobs = self.model.get_logprobs_batch(all_prompts, targets)
+
+                # Distribute results back to each probe for scoring
+                for name, probe, items, start, end in slices:
+                    probe_logprobs = all_logprobs[start:end]
+                    result = probe.score_logprobs(items, probe_logprobs)
+                    self._store_result(scores, name, result)
+
+        elif logprob_probes:
+            # Fallback: no batch support, run individually
+            for name, probe, prompts, targets, items in logprob_probes:
+                result = probe.run(self.model)
+                self._store_result(scores, name, result)
+
+        # --- Generation probes (sequential) ---
+        for probe_name in gen_probe_names:
+            probe = get_probe(probe_name)
+            if self.config.full_items:
+                probe.max_items = None
+            probe.log_responses = True
             if is_gpu:
-                # Direct call — no threading for GPU adapters (CUDA not thread-safe)
-                print(f"  [{probe_name}] direct call (GPU adapter)")
                 try:
                     result = probe.run(self.model)
                 except Exception as e:
@@ -162,34 +221,34 @@ class SweepRunner:
                 except Exception as e:
                     print(f"  Probe {probe_name} error: {e}")
                     result = 0.0
-            if isinstance(result, dict):
-                scores[probe_name] = result["score"]
-                # Store difficulty breakdown if available
-                if "easy_score" in result:
-                    scores[f"{probe_name}_easy"] = result["easy_score"]
-                if "hard_score" in result:
-                    scores[f"{probe_name}_hard"] = result["hard_score"]
-                # Store logprob probability tracking if available
-                if "p_correct" in result:
-                    scores[f"{probe_name}_pcorrect"] = result["p_correct"]
-                if "p_correct_easy" in result:
-                    scores[f"{probe_name}_pcorrect_easy"] = result["p_correct_easy"]
-                if "p_correct_hard" in result:
-                    scores[f"{probe_name}_pcorrect_hard"] = result["p_correct_hard"]
-                # Log failed items for post-hoc scoring review
-                if "item_results" in result:
-                    failures = [r for r in result["item_results"]
-                                if r.get("score", 1.0) == 0.0]
-                    if failures:
-                        scores[f"_failures_{probe_name}"] = failures
-            else:
-                scores[probe_name] = result
+            self._store_result(scores, probe_name, result)
 
-            # Reset think-close counter (silent — logging removed for speed)
             if hasattr(self.model, '_think_close_total'):
                 self.model._think_close_total = 0
 
         return scores
+
+    def _store_result(self, scores: dict, probe_name: str, result) -> None:
+        """Extract scores from a probe result into the scores dict."""
+        if isinstance(result, dict):
+            scores[probe_name] = result["score"]
+            if "easy_score" in result:
+                scores[f"{probe_name}_easy"] = result["easy_score"]
+            if "hard_score" in result:
+                scores[f"{probe_name}_hard"] = result["hard_score"]
+            if "p_correct" in result:
+                scores[f"{probe_name}_pcorrect"] = result["p_correct"]
+            if "p_correct_easy" in result:
+                scores[f"{probe_name}_pcorrect_easy"] = result["p_correct_easy"]
+            if "p_correct_hard" in result:
+                scores[f"{probe_name}_pcorrect_hard"] = result["p_correct_hard"]
+            if "item_results" in result:
+                failures = [r for r in result["item_results"]
+                            if r.get("score", 1.0) == 0.0]
+                if failures:
+                    scores[f"_failures_{probe_name}"] = failures
+        else:
+            scores[probe_name] = result
 
     def _run_probe_with_timeout(self, probe, timeout: float) -> "float | dict":
         """Run a single probe with a timeout. Returns 0.0 on timeout or error."""
@@ -223,16 +282,20 @@ class SweepRunner:
     
     def all_configs(self) -> list[tuple[int, int]]:
         """Generate all valid (i,j) pairs to sweep."""
+        if self.config.config_list is not None:
+            return self.config.config_list
+
         N = self.config.max_layers or self.n_layers
+        min_i = self.config.min_layer
         configs = []
-        
-        for i in range(N):
+
+        for i in range(min_i, N):
             for j in range(i + self.config.min_block_size, N + 1):
                 block_size = j - i
                 if self.config.max_block_size and block_size > self.config.max_block_size:
                     continue
                 configs.append((i, j))
-                
+
         return configs
     
     def run(self):

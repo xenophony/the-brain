@@ -35,8 +35,10 @@ def main():
     parser.add_argument("--probes", nargs="+", default=["math", "eq"],
                         help=f"Probes to run. Use 'all' for all probes. Available: {ALL_PROBES}")
     parser.add_argument("--output", default="results/latest", help="Output directory")
-    parser.add_argument("--max-layers", type=int, default=None, 
+    parser.add_argument("--max-layers", type=int, default=None,
                         help="Limit sweep to first N layers (for testing)")
+    parser.add_argument("--min-layer", type=int, default=0,
+                        help="Start sweep from this layer index (for splitting across GPUs)")
     parser.add_argument("--max-block", type=int, default=None,
                         help="Maximum block size to test (speeds up sweep)")
     parser.add_argument("--min-block", type=int, default=1,
@@ -59,6 +61,9 @@ def main():
                         help="Run all probe items (disable max_items limit)")
     parser.add_argument("--no-prune", action="store_true",
                         help="Disable adaptive catastrophic pruning")
+    parser.add_argument("--config-file", type=str, default=None,
+                        help="JSON file with specific (i,j) configs to run "
+                             "(from analyze_logprob_sweep.py targeted_configs.json)")
 
     args = parser.parse_args()
     
@@ -110,12 +115,25 @@ def main():
 
     print(f"Mode: {args.mode}")
 
+    # Load explicit config list if provided
+    config_list = None
+    if args.config_file:
+        import json
+        with open(args.config_file) as f:
+            data = json.load(f)
+        if "target_configs" in data:
+            config_list = [tuple(c) for c in data["target_configs"]]
+        elif isinstance(data, list):
+            config_list = [tuple(c) for c in data]
+        print(f"Config file: {len(config_list)} specific configs from {args.config_file}")
+
     # Run sweep
     config = SweepConfig(
         model_path=args.model,
         output_dir=args.output,
         probe_names=probes,
         max_layers=args.max_layers,
+        min_layer=args.min_layer,
         min_block_size=args.min_block,
         max_block_size=args.max_block,
         timeout_seconds=args.timeout,
@@ -124,6 +142,7 @@ def main():
         resume=args.resume,
         full_items=args.full,
         prune=not args.no_prune,
+        config_list=config_list,
     )
 
     runner = SweepRunner(config, adapter_class=adapter_class)
