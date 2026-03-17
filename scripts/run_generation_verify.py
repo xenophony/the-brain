@@ -125,6 +125,13 @@ VERIFICATION_PATHS = [
 
 GENERATION_PROBES = ["math", "eq", "language", "spatial_pong_simple", "spatial_pong_strategic"]
 
+# Logprob probes run alongside generation for psych signal capture
+LOGPROB_PROBES = [
+    "causal_logprob", "logic_logprob", "sentiment_logprob",
+    "error_logprob", "hallucination_logprob", "routing_logprob",
+    "judgement_logprob", "consistency_logprob",
+]
+
 
 def build_path(entry, n_layers):
     """Build a layer path from a verification entry."""
@@ -145,9 +152,12 @@ def main():
                         help="Run each path N times and average")
     parser.add_argument("--output", default=None,
                         help="Output file (default: auto-timestamped)")
+    parser.add_argument("--no-psych", action="store_true",
+                        help="Skip logprob+psych capture (faster, less data)")
     args = parser.parse_args()
 
     probe_names = args.probes or GENERATION_PROBES
+    run_psych = not args.no_psych
 
     # Load model
     from sweep.exllama_adapter import ExLlamaV2LayerAdapter
@@ -189,8 +199,27 @@ def main():
                 baseline_scores[name] = []
             baseline_scores[name].append(score)
 
+    # Logprob + psych baseline
+    baseline_psych = {}
+    if run_psych:
+        print("  Running logprob+psych baseline...")
+        for name in LOGPROB_PROBES:
+            probe = get_probe(name)
+            probe.capture_psych = True
+            result = probe.run(model)
+            if isinstance(result, dict):
+                baseline_psych[name] = result.get("score", 0.0)
+                if "p_correct" in result:
+                    baseline_psych[f"{name}_pcorrect"] = result["p_correct"]
+                for k, v in result.items():
+                    if k.startswith("psych_") and isinstance(v, (int, float)):
+                        baseline_psych[f"{name}_{k}"] = v
+
     baseline_avg = {k: sum(v) / len(v) for k, v in baseline_scores.items()}
-    print(f"  Baseline: {' | '.join(f'{k}={v:.3f}' for k, v in sorted(baseline_avg.items()))}")
+    print(f"  Baseline gen: {' | '.join(f'{k}={v:.3f}' for k, v in sorted(baseline_avg.items()))}")
+    if baseline_psych:
+        logprob_summary = {k: v for k, v in baseline_psych.items() if k in LOGPROB_PROBES}
+        print(f"  Baseline logprob: {' | '.join(f'{k.replace(\"_logprob\",\"\")}={v:.3f}' for k, v in sorted(logprob_summary.items()))}")
 
     # Run all paths
     results = []
@@ -201,6 +230,7 @@ def main():
         path_scores = {}
         model.set_layer_path(path)
 
+        # Generation probes
         for rep in range(args.repeats):
             for name in probe_names:
                 probe = get_probe(name)
@@ -216,16 +246,66 @@ def main():
                     path_scores[name] = []
                 path_scores[name].append(score)
 
+        # Logprob + psych pass (single run, no repeats needed — deterministic)
+        path_psych = {}
+        if run_psych:
+            for name in LOGPROB_PROBES:
+                probe = get_probe(name)
+                probe.capture_psych = True
+                try:
+                    result = probe.run(model)
+                    if isinstance(result, dict):
+                        path_psych[name] = result.get("score", 0.0)
+                        if "p_correct" in result:
+                            path_psych[f"{name}_pcorrect"] = result["p_correct"]
+                        for k, v in result.items():
+                            if k.startswith("psych_") and isinstance(v, (int, float)):
+                                path_psych[f"{name}_{k}"] = v
+                except Exception:
+                    pass
+
         avg_scores = {k: sum(v) / len(v) for k, v in path_scores.items()}
         deltas = {k: avg_scores[k] - baseline_avg.get(k, 0) for k in avg_scores}
 
+        # Psych deltas
+        psych_deltas = {}
+        if path_psych and baseline_psych:
+            for k in path_psych:
+                base = baseline_psych.get(k, 0)
+                if isinstance(base, (int, float)) and isinstance(path_psych[k], (int, float)):
+                    psych_deltas[k] = round(path_psych[k] - base, 6)
+
         # Print per-probe results
+        print("  Generation:")
         for name in sorted(probe_names):
             d = deltas.get(name, 0)
             s = avg_scores.get(name, 0)
             b = baseline_avg.get(name, 0)
             marker = " +++" if d > 0.05 else " ---" if d < -0.05 else ""
-            print(f"  {name:30s} {b:.3f} -> {s:.3f} ({d:+.3f}){marker}")
+            print(f"    {name:28s} {b:.3f} -> {s:.3f} ({d:+.3f}){marker}")
+
+        if psych_deltas:
+            # Show logprob score deltas
+            logprob_deltas = {k: v for k, v in psych_deltas.items() if k in LOGPROB_PROBES}
+            if logprob_deltas:
+                print("  Logprob:")
+                for k in sorted(logprob_deltas):
+                    d = logprob_deltas[k]
+                    marker = " +++" if d > 0.05 else " ---" if d < -0.05 else ""
+                    print(f"    {k.replace('_logprob',''):28s} {d:+.3f}{marker}")
+
+            # Show top psych signal changes
+            psych_only = {k: v for k, v in psych_deltas.items() if "_psych_" in k}
+            if psych_only:
+                top_psych = sorted(psych_only.items(), key=lambda x: abs(x[1]), reverse=True)[:5]
+                if any(abs(v) > 1e-4 for _, v in top_psych):
+                    print("  Psych signal (top changes):")
+                    for k, v in top_psych:
+                        if abs(v) > 1e-4:
+                            # Extract category name
+                            cat = k.split("_psych_")[-1] if "_psych_" in k else k
+                            probe_prefix = k.split("_psych_")[0].replace("_logprob", "")
+                            print(f"    {probe_prefix}/{cat}: {v:+.6f}")
 
         results.append({
             "label": label,
@@ -233,6 +313,8 @@ def main():
             "n_layers": len(path),
             "scores": avg_scores,
             "deltas": deltas,
+            "psych_scores": path_psych,
+            "psych_deltas": psych_deltas,
             "combined_delta": round(sum(deltas.values()), 4),
             "min_delta": round(min(deltas.values()), 4),
             "n_improved": sum(1 for d in deltas.values() if d > 0.05),
@@ -251,11 +333,14 @@ def main():
     output = {
         "timestamp": timestamp,
         "model": args.model,
-        "probes": probe_names,
+        "generation_probes": probe_names,
+        "logprob_probes": LOGPROB_PROBES if run_psych else [],
+        "psych_captured": run_psych,
         "full_items": args.full,
         "repeats": args.repeats,
         "n_paths": len(results),
-        "baseline_scores": baseline_avg,
+        "baseline_generation": baseline_avg,
+        "baseline_psych": baseline_psych,
         "results": results,
     }
 
