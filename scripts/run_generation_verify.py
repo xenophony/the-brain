@@ -219,7 +219,8 @@ def main():
     print(f"  Baseline gen: {' | '.join(f'{k}={v:.3f}' for k, v in sorted(baseline_avg.items()))}")
     if baseline_psych:
         logprob_summary = {k: v for k, v in baseline_psych.items() if k in LOGPROB_PROBES}
-        print(f"  Baseline logprob: {' | '.join(f'{k.replace(\"_logprob\",\"\")}={v:.3f}' for k, v in sorted(logprob_summary.items()))}")
+        parts = [f'{k.replace("_logprob","")}={v:.3f}' for k, v in sorted(logprob_summary.items())]
+        print(f"  Baseline logprob: {' | '.join(parts)}")
 
     # Run all paths
     results = []
