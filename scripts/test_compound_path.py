@@ -59,6 +59,8 @@ def main():
                         help="Use all probe items (no max_items limit) for less noisy results")
     parser.add_argument("--repeats", type=int, default=1,
                         help="Run each path N times and average (reduces noise)")
+    parser.add_argument("--regions", nargs="+", default=None,
+                        help="Circuit regions as i-j pairs, e.g. --regions 1-3 27-28 44-48")
     args = parser.parse_args()
 
     # Load model
@@ -78,40 +80,33 @@ def main():
         print()
     normal_path = list(range(N))
 
-    # Multi-pass circuit amplification test
-    # Run specific layers multiple times to see if effects scale
+    # Parse regions from CLI or use defaults
+    if args.regions:
+        regions = {}
+        for r in args.regions:
+            parts = r.split("-")
+            i, j = int(parts[0]), int(parts[1])
+            regions[r] = (i, j)
+    else:
+        # Default: key circuits from logprob sweep findings
+        regions = {
+            "1-3": (1, 3),
+            "27-28": (27, 28),
+            "44-48": (44, 48),
+        }
+
+    print(f"Regions: {list(regions.keys())}")
+
+    # Build all combinations
+    from itertools import combinations
     paths = [("baseline", normal_path, [], [])]
 
-    # Layer 27 through spatial circuit 1x, 2x, 3x, 4x, 5x
-    for repeats in range(1, 6):
-        label = f"27-28 x{repeats}"
-        # Build path manually: normal path but layer 27 repeated
-        path = list(range(N))
-        # Insert extra copies of layer 27 right after its normal position
-        insert_pos = 28  # after layer 27 in the normal path
-        for _ in range(repeats - 1):  # -1 because it already runs once
-            path.insert(insert_pos, 27)
-        paths.append((label, path, [], []))
-
-    # Also test layer 1 (reasoning) multi-pass for comparison
-    for repeats in range(1, 6):
-        label = f"1-2 x{repeats}"
-        path = list(range(N))
-        insert_pos = 2
-        for _ in range(repeats - 1):
-            path.insert(insert_pos, 1)
-        paths.append((label, path, [], []))
-
-    # Combined: spatial 27 x3 + reasoning 1 x3
-    path = list(range(N))
-    # Insert layer 1 copies
-    for _ in range(2):
-        path.insert(2, 1)
-    # Find where 27 is now and insert copies after it
-    idx_27 = path.index(27)
-    for _ in range(2):
-        path.insert(idx_27 + 1, 27)
-    paths.append(("1 x3 + 27 x3", path, [], []))
+    region_names = sorted(regions.keys())
+    for r in range(1, len(region_names) + 1):
+        for combo in combinations(region_names, r):
+            label = "dup " + " + ".join(combo)
+            dup_regions = [regions[c] for c in combo]
+            paths.append((label, None, [], dup_regions))
 
     results = []
     for label, explicit_path, skip_regions, dup_regions in paths:
