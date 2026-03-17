@@ -50,7 +50,10 @@ def main():
     normal_path = list(range(N))
 
     # Define circuit regions to test (from sweep data)
+    # Granular: individual layers + key combinations
     regions = {
+        "1-2": (1, 2),
+        "2-3": (2, 3),
         "1-3": (1, 3),
         "27-28": (27, 28),
         "44-48": (44, 48),
