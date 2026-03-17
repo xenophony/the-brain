@@ -237,23 +237,13 @@ def main():
                 probe = get_probe(name)
                 if args.full:
                     probe.max_items = None
-                probe.log_responses = (rep == 0)  # capture on first rep only
+                probe.log_responses = True
                 try:
                     result = probe.run(model)
                     score = result["score"] if isinstance(result, dict) else float(result)
-                    # Grab sample responses from first rep
+                    # Capture all responses from first rep
                     if rep == 0 and isinstance(result, dict) and "item_results" in result:
-                        items = result["item_results"]
-                        # Pick one good and one bad response
-                        good = next((r for r in items if r.get("score", 0) > 0.5), None)
-                        bad = next((r for r in items if r.get("score", 0) == 0), None)
-                        samples = []
-                        if good:
-                            samples.append({"verdict": "CORRECT", **{k: v for k, v in good.items() if k != "item_results"}})
-                        if bad:
-                            samples.append({"verdict": "WRONG", **{k: v for k, v in bad.items() if k != "item_results"}})
-                        if samples:
-                            path_samples[name] = samples
+                        path_samples[name] = result["item_results"]
                 except Exception as e:
                     print(f"    {name} error: {e}")
                     score = 0.0
@@ -322,15 +312,18 @@ def main():
                             probe_prefix = k.split("_psych_")[0].replace("_logprob", "")
                             print(f"    {probe_prefix}/{cat}: {v:+.6f}")
 
-        # Print sample responses for spot-checking
+        # Print sample responses for spot-checking (2 per probe, all saved to JSON)
         if path_samples:
             print("  Sample responses:")
-            for probe_name, samples in path_samples.items():
-                for s in samples:
-                    resp = s.get("response", s.get("raw_response", ""))[:80]
-                    verdict = s.get("verdict", "?")
-                    score_val = s.get("score", "?")
-                    print(f"    [{probe_name}][{verdict}] {repr(resp)}")
+            for probe_name, items in path_samples.items():
+                good = next((r for r in items if r.get("score", 0) > 0.5), None)
+                bad = next((r for r in items if r.get("score", 0) == 0), None)
+                if good:
+                    resp = good.get("response", good.get("raw_response", ""))[:80]
+                    print(f"    [{probe_name}][OK] {repr(resp)}")
+                if bad:
+                    resp = bad.get("response", bad.get("raw_response", ""))[:80]
+                    print(f"    [{probe_name}][FAIL] {repr(resp)}")
 
         results.append({
             "label": label,
