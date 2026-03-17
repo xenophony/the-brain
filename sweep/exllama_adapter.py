@@ -608,13 +608,20 @@ class ExLlamaV2LayerAdapter:
         if len(prompts) <= 1:
             return [self.get_logprobs(p, target_tokens) for p in prompts]
 
-        # Pre-resolve target token IDs once
+        # Pre-resolve target token IDs (cached across calls)
+        if not hasattr(self, '_target_id_cache'):
+            self._target_id_cache = {}
         target_ids = {}
         if target_tokens:
             for tok_str in target_tokens:
-                tok_enc = self._encode(tok_str, add_bos=False)
-                if tok_enc.shape[-1] >= 1:
-                    target_ids[tok_str] = tok_enc[0, 0].item()
+                if tok_str in self._target_id_cache:
+                    target_ids[tok_str] = self._target_id_cache[tok_str]
+                else:
+                    tok_enc = self._encode(tok_str, add_bos=False)
+                    if tok_enc.shape[-1] >= 1:
+                        tid = tok_enc[0, 0].item()
+                        target_ids[tok_str] = tid
+                        self._target_id_cache[tok_str] = tid
 
         # Encode and left-pad
         encoded = [self._encode(p, add_bos=True) for p in prompts]

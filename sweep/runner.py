@@ -170,33 +170,31 @@ class SweepRunner:
 
         # --- Cross-probe logprob batch ---
         if logprob_probes and hasattr(self.model, 'get_logprobs_batch'):
-            # Collect all prompts and track which belong to which probe.
-            # Group by target_tokens (probes with same choices can share a batch).
-            target_groups = {}  # frozenset(targets) -> [(name, probe, prompts, items)]
+            # Merge ALL targets from ALL probes into one super-set.
+            # One forward pass serves all probes — targets only affect
+            # which logit indices we extract, not the forward pass itself.
+            all_targets_set = set()
             for name, probe, prompts, targets, items in logprob_probes:
-                key = tuple(sorted(targets))
-                if key not in target_groups:
-                    target_groups[key] = {"targets": targets, "entries": []}
-                target_groups[key]["entries"].append((name, probe, prompts, items))
+                all_targets_set.update(targets)
+            merged_targets = sorted(all_targets_set)
 
-            for key, group in target_groups.items():
-                targets = group["targets"]
-                all_prompts = []
-                slices = []  # (name, probe, items, start, end)
-                for name, probe, prompts, items in group["entries"]:
-                    start = len(all_prompts)
-                    all_prompts.extend(prompts)
-                    end = len(all_prompts)
-                    slices.append((name, probe, items, start, end))
+            all_prompts = []
+            slices = []  # (name, probe, items, start, end)
+            for name, probe, prompts, targets, items in logprob_probes:
+                start = len(all_prompts)
+                all_prompts.extend(prompts)
+                end = len(all_prompts)
+                slices.append((name, probe, items, start, end))
 
-                # One mega-batch forward pass for this target group
-                all_logprobs = self.model.get_logprobs_batch(all_prompts, targets)
+            # One mega-batch forward pass for all logprob probes
+            all_logprobs = self.model.get_logprobs_batch(
+                all_prompts, merged_targets)
 
-                # Distribute results back to each probe for scoring
-                for name, probe, items, start, end in slices:
-                    probe_logprobs = all_logprobs[start:end]
-                    result = probe.score_logprobs(items, probe_logprobs)
-                    self._store_result(scores, name, result)
+            # Distribute results back to each probe for scoring
+            for name, probe, items, start, end in slices:
+                probe_logprobs = all_logprobs[start:end]
+                result = probe.score_logprobs(items, probe_logprobs)
+                self._store_result(scores, name, result)
 
         elif logprob_probes:
             # Fallback: no batch support, run individually
