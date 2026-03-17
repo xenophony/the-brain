@@ -433,9 +433,9 @@ def _extract_eq_digit(response: str) -> int | None:
     digits = re.findall(r'\b(\d)\b', r)
     if digits:
         return int(digits[-1])
-    # Try any digit (last one)
+    # Try any ASCII digit (last one) — skip unicode superscripts etc.
     for ch in reversed(r):
-        if ch.isdigit():
+        if ch in "0123456789":
             return int(ch)
     return None
 
