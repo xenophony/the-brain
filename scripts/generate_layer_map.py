@@ -145,38 +145,76 @@ def generate_map(results, output_path):
     lines.append("Tags: AMPLIFY (duplicate helps), DISPENSABLE (skip helps),")
     lines.append("CRITICAL (skip hurts), FRAGILE (duplicate hurts), TRADEOFF (mixed).\n")
 
-    # Summary bar
-    lines.append("## Quick Reference\n")
-    lines.append("```")
+    # Domain-function summary
+    lines.append("## Layer Functions\n")
+    lines.append("What each layer does (benefits when duplicated) and what it harms.\n")
+
+    # Domain groupings for readable labels
+    domain_labels = {
+        "math": "MATH",
+        "causal_logprob": "CAUSAL",
+        "logic_logprob": "LOGIC",
+        "sentiment_logprob": "EMOTION",
+        "error_logprob": "ERROR-CHECK",
+        "hallucination_logprob": "HALLUC-RESIST",
+        "sycophancy_logprob": "INTEGRITY",
+        "consistency_logprob": "CONSISTENCY",
+        "routing_logprob": "ROUTING",
+        "judgement_logprob": "SELF-EVAL",
+        "language_logprob": "LANGUAGE",
+        "pong_simple_logprob": "SPATIAL",
+        "pong_strategic_logprob": "SPATIAL-PLAN",
+        "implication_logprob": "IMPLICATION",
+        "negation_logprob": "NEGATION",
+        "temporal_logprob": "TEMPORAL",
+        "psych_conflict_logprob": "CONFLICT-DETECT",
+        "psych_difficulty_logprob": "DIFFICULTY-SENSE",
+        "psych_unknowable_logprob": "UNKNOWABLE-SENSE",
+        "psych_urgency_logprob": "URGENCY-SENSE",
+    }
+
     for layer in range(n_layers):
         e = effects.get(layer, {})
-        tags = classify_layer(e) if e else ["no-data"]
-        tag_str = ",".join(tags)
+        if not e:
+            lines.append(f"**L{layer:02d}** | no data")
+            continue
 
-        # Visual bar
-        dup_d = e.get("dup_delta", 0.0)
-        skip_d = e.get("skip_delta", 0.0)
+        # Build function description from top probe effects
+        dup_helps = sorted(e.get("dup_helps", []), key=lambda x: x[1], reverse=True)
+        dup_hurts = sorted(e.get("dup_hurts", []), key=lambda x: x[1])
+        skip_helps = sorted(e.get("skip_helps", []), key=lambda x: x[1], reverse=True)
+        skip_hurts = sorted(e.get("skip_hurts", []), key=lambda x: x[1])
 
-        # Bar characters
-        if "AMPLIFY" in tags:
-            bar = "████"
-        elif "amplify-mild" in tags:
-            bar = "▓▓░░"
-        elif "DISPENSABLE" in tags:
-            bar = "○○○○"
-        elif "dispensable-mild" in tags:
-            bar = "○○░░"
-        elif "FRAGILE" in tags:
-            bar = "╳╳╳╳"
-        elif "CRITICAL" in tags:
-            bar = "████"
-        elif "TRADEOFF" in tags:
-            bar = "▓░▓░"
+        # Top 3 things it helps (when duplicated)
+        amplifies = [f"{domain_labels.get(p, p)}({d:+.2f})"
+                     for p, d in dup_helps[:4]]
+        # Top 3 things it hurts (when duplicated)
+        harms = [f"{domain_labels.get(p, p)}({d:+.2f})"
+                 for p, d in dup_hurts[:3]]
+        # What improves when removed
+        dispensable_for = [f"{domain_labels.get(p, p)}({d:+.2f})"
+                          for p, d in skip_helps[:3]]
+        # What breaks when removed
+        critical_for = [f"{domain_labels.get(p, p)}({d:+.2f})"
+                        for p, d in skip_hurts[:3]]
+
+        line = f"**L{layer:02d}**"
+        parts = []
+        if amplifies:
+            parts.append(f"Amplifies: {', '.join(amplifies)}")
+        if harms:
+            parts.append(f"Harms: {', '.join(harms)}")
+        if dispensable_for:
+            parts.append(f"Removable for: {', '.join(dispensable_for)}")
+        if critical_for:
+            parts.append(f"Critical for: {', '.join(critical_for)}")
+
+        if parts:
+            lines.append(f"{line} | {' | '.join(parts)}")
         else:
-            bar = "░░░░"
+            lines.append(f"{line} | neutral (no strong effects)")
 
-        lines.append(f"  L{layer:02d} {bar} {tag_str:30s} dup={dup_d:+.2f}  skip={skip_d:+.2f}")
-    lines.append("```\n")
+    lines.append("")
 
     # Detailed per-layer breakdown
     lines.append("## Detailed Layer Analysis\n")
