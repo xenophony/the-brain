@@ -18,20 +18,36 @@ from sweep.runner import build_optimized_path
 from probes.registry import get_probe
 
 
-def run_path(model, path, probe_names, label):
-    """Run probes on a specific layer path and return scores."""
+def run_path(model, path, probe_names, label, repeats=1):
+    """Run probes on a specific layer path and return scores.
+
+    If repeats > 1, runs multiple times and averages for noise reduction.
+    """
     model.set_layer_path(path)
-    scores = {}
-    for name in probe_names:
-        probe = get_probe(name)
-        result = probe.run(model)
-        if isinstance(result, dict):
-            scores[name] = result["score"]
-            if "p_correct" in result:
-                scores[f"{name}_pcorrect"] = result["p_correct"]
-        else:
-            scores[name] = result
-    return scores
+    all_runs = []
+    for _ in range(repeats):
+        scores = {}
+        for name in probe_names:
+            probe = get_probe(name)
+            result = probe.run(model)
+            if isinstance(result, dict):
+                scores[name] = result["score"]
+                if "p_correct" in result:
+                    scores[f"{name}_pcorrect"] = result["p_correct"]
+            else:
+                scores[name] = result
+        all_runs.append(scores)
+
+    if repeats == 1:
+        return all_runs[0]
+
+    # Average across runs
+    avg = {}
+    for key in all_runs[0]:
+        vals = [r[key] for r in all_runs if isinstance(r.get(key), (int, float))]
+        if vals:
+            avg[key] = sum(vals) / len(vals)
+    return avg
 
 
 def main():
@@ -39,6 +55,10 @@ def main():
     parser.add_argument("--model", required=True)
     parser.add_argument("--probes", nargs="+", default=["math"],
                         help="Probes to test (default: math)")
+    parser.add_argument("--full", action="store_true",
+                        help="Use all probe items (no max_items limit) for less noisy results")
+    parser.add_argument("--repeats", type=int, default=1,
+                        help="Run each path N times and average (reduces noise)")
     args = parser.parse_args()
 
     # Load model
@@ -47,6 +67,15 @@ def main():
     N = model.num_layers
 
     probe_names = args.probes
+
+    # Set full items mode on all probes
+    if args.full:
+        for name in probe_names:
+            probe = get_probe(name)
+            probe.max_items = None
+            n = len(probe.ITEMS) if hasattr(probe, 'ITEMS') else '?'
+            print(f"  {name}: max_items=None ({n} items)")
+        print()
     normal_path = list(range(N))
 
     # Multi-pass circuit amplification test
@@ -99,7 +128,7 @@ def main():
         if skip_regions:
             print(f"  Skipped: {skip_regions}")
 
-        scores = run_path(model, path, probe_names, label)
+        scores = run_path(model, path, probe_names, label, repeats=args.repeats)
         results.append((label, scores))
 
         for name, score in sorted(scores.items()):
