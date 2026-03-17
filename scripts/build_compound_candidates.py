@@ -276,6 +276,37 @@ def build_compound_paths(
                     "n_layers": len(path),
                 })
 
+    # --- Feedback loops (experimental) ---
+    # Re-route output of one circuit back through another.
+    # Layer 2 = reasoning, layers 27-28 = spatial, layers 44-47 = output.
+    # These probably won't work but cost 10s each to find out.
+    feedback_paths = [
+        # Spatial output feeds back through reasoning
+        ("feedback: 27-28 → 2",
+         list(range(29)) + [27, 28, 2] + list(range(3, 48))),
+        # Reasoning output feeds back through spatial
+        ("feedback: 2 → 27-28",
+         list(range(3)) + [2, 27, 28] + list(range(3, 48))),
+        # Output verification feeds back through reasoning
+        ("feedback: 44-47 → 2",
+         list(range(48)) + [44, 45, 46, 47, 2] + list(range(3, 48))),
+        # Double reasoning then spatial
+        ("feedback: 2 → 2 → 27-28",
+         list(range(3)) + [2, 2] + list(range(3, 29)) + [27, 28] + list(range(29, 48))),
+        # Full loop: reasoning → model → spatial → reasoning → output
+        ("feedback: 2 → ... → 27-28 → 2 → ... → 47",
+         list(range(29)) + [27, 28, 2] + list(range(3, 48))),
+    ]
+
+    for label, path in feedback_paths:
+        candidates.append({
+            "label": label,
+            "dup_regions": [],
+            "skip_regions": [],
+            "path": path,
+            "n_layers": len(path),
+        })
+
     return candidates
 
 
