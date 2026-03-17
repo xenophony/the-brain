@@ -152,6 +152,36 @@ def main():
                 print(f"  {delta:>+14.4f}", end="")
         print()
 
+    # Save results
+    import json
+    from datetime import datetime
+    output_dir = Path("results/analysis")
+    output_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    out_file = output_dir / f"compound_test_{timestamp}.json"
+
+    save_data = {
+        "timestamp": timestamp,
+        "probes": probe_names,
+        "regions": {k: list(v) for k, v in regions.items()} if isinstance(next(iter(regions.values())), tuple) else regions,
+        "repeats": args.repeats,
+        "full_items": args.full,
+        "baseline": baseline_scores,
+        "results": [
+            {
+                "path": label,
+                "scores": scores,
+                "deltas": {k: scores.get(k, 0.0) - baseline_scores.get(k, 0.0)
+                           for k in baseline_scores
+                           if isinstance(scores.get(k, 0.0), (int, float))}
+            }
+            for label, scores in results
+        ],
+    }
+    with open(out_file, "w") as f:
+        json.dump(save_data, f, indent=2)
+    print(f"\nResults saved to {out_file}")
+
 
 if __name__ == "__main__":
     main()
