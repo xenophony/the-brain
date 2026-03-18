@@ -186,6 +186,8 @@ def main():
                         help="Max tokens for generation (default: 200)")
     parser.add_argument("--mode", type=str, default="perfect",
                         help="MockAdapter mode (default: perfect)")
+    parser.add_argument("--api", type=str, default=None,
+                        help="Use API model instead of local (e.g. qwen-30b, claude-sonnet)")
 
     args = parser.parse_args()
 
@@ -195,6 +197,25 @@ def main():
         model = MockAdapter(mode=args.mode, seed=42)
         print(f"Using MockAdapter (mode={args.mode}, {model.num_layers} layers)")
         is_mock = True
+    elif args.api:
+        from scripts.run_baselines import MODEL_REGISTRY, FALLBACK_REGISTRY
+        from sweep.api_adapters import get_adapter
+        if args.api in MODEL_REGISTRY:
+            provider, model_id = MODEL_REGISTRY[args.api]
+        elif args.api in FALLBACK_REGISTRY:
+            provider, model_id = FALLBACK_REGISTRY[args.api]
+        else:
+            # Treat as provider/model_id directly (e.g. openrouter/qwen/qwen3-32b)
+            parts = args.api.split("/", 1)
+            if len(parts) == 2:
+                provider, model_id = parts[0], parts[1]
+            else:
+                parser.error(f"Unknown API model: {args.api}. "
+                             f"Available: {list(MODEL_REGISTRY.keys())}")
+                return
+        model = get_adapter(provider, model_id)
+        print(f"Using API: {provider}/{model_id}")
+        is_mock = True  # API models don't need special template handling
     else:
         from sweep.exllama_adapter import ExLlamaV2LayerAdapter
         model = ExLlamaV2LayerAdapter(args.model)
