@@ -50,6 +50,12 @@ def run_with_steering(model, probe, steering_vectors, alpha):
 
     def steered_run_module(module, x, cache, attn_params, past_len):
         result = original_run_module(module, x, cache, attn_params, past_len)
+        # Only steer during prefill (seq_len > 1), not during decode steps.
+        # This prevents the vector from compounding over 20+ decode steps
+        # which destroys generation quality.
+        seq_len = result.shape[1] if result.dim() == 3 else 1
+        if seq_len <= 1:
+            return result  # decode step — skip steering
         for layer_idx, vector in steering_vectors.items():
             layer = model._layer_modules[layer_idx]
             target_module = layer[1] if model._moe_mode else layer
