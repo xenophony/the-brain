@@ -125,6 +125,7 @@ class BaseLogprobProbe(BaseProbe):
     CHOICES: list[str] = []
     capture_psych: bool = False
     _psych_words: list[str] | None = None  # cached flattened word list (class-level, cleared on vocab change)
+    _psych_word_variants: dict | None = None  # cached {word: [variant1, variant2, ...]}
 
     @classmethod
     def _get_psych_words(cls) -> list[str]:
@@ -138,6 +139,23 @@ class BaseLogprobProbe(BaseProbe):
                     words.add(f" {w.lower()}")
             cls._psych_words = sorted(words)
         return cls._psych_words
+
+    @classmethod
+    def _get_psych_word_variants(cls) -> dict:
+        """Get mapping from each psych word to its lookup variants.
+
+        Returns {word: [variant1, variant2]} where variants are the
+        lowercase and space-prefixed lowercase forms used to look up
+        logprobs in the logprob dict.
+        """
+        if cls._psych_word_variants is None:
+            from probes.psycholinguistics import PSYCH_VOCAB
+            variants = {}
+            for word_list in PSYCH_VOCAB.values():
+                for w in word_list:
+                    variants[w] = [w.lower(), f" {w.lower()}"]
+            cls._psych_word_variants = variants
+        return cls._psych_word_variants
 
     def get_prompts_and_targets(self) -> tuple[list[str], list[str], list[dict]]:
         """Return (prompts, target_tokens, items) for cross-probe batching.
@@ -204,7 +222,11 @@ class BaseLogprobProbe(BaseProbe):
                 hard_argmax.append(argmax_correct)
                 hard_pcorrect.append(p_correct)
 
-            # Psych scoring: sum probability mass per category from logprobs
+            # Psych scoring: sum probability mass per category from logprobs.
+            # NOTE: For multi-token words, the batched logprob path only captures
+            # the first BPE subword token's logprob. For proper multi-token scoring
+            # (geometric mean of all subword probabilities), use
+            # score_psych_vocab_from_logits() which has access to full vocab logits.
             if psych_accum:
                 try:
                     from probes.psycholinguistics import PSYCH_VOCAB

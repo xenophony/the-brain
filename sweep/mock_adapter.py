@@ -49,6 +49,99 @@ class MockAdapter:
         """Batched logprobs — sequential for mock, batched for real adapter."""
         return [self.get_logprobs(p, target_tokens) for p in prompts]
 
+    def get_layerwise_logprobs(self, prompt, target_tokens, layer_path=None,
+                               psych_token_map=None):
+        """Layerwise logprobs — synthetic per-layer data for testing.
+
+        Returns plausible per-layer data where p(correct) gradually increases
+        across layers (sigmoidal rise), matching the pattern observed in real
+        models. Psych scores follow category-specific patterns.
+        """
+        import math as _math
+
+        if layer_path is None:
+            layer_path = list(range(self.num_layers))
+
+        n_steps = len(layer_path)
+        target_tokens = target_tokens or ["yes", "no"]
+
+        # Determine which token is "correct" based on mode
+        # For mock, first token is treated as correct
+        correct_token = target_tokens[0] if target_tokens else "yes"
+
+        layer_logprobs = []
+        for k, layer_idx in enumerate(layer_path):
+            t = k / max(n_steps - 1, 1)  # normalized position 0..1
+
+            # p(correct) evolution depends on mode
+            if self.mode == "perfect":
+                p_correct = 0.05 + 0.85 / (1 + _math.exp(-12 * (t - 0.45)))
+                if t > 0.7:
+                    p_correct -= 0.05 * (t - 0.7) / 0.3
+            elif self.mode == "terrible":
+                p_correct = 0.02 + 0.03 * _math.sin(t * _math.pi)
+            elif self.mode == "sycophantic":
+                if t < 0.6:
+                    p_correct = 0.05 + 0.7 * (t / 0.6)
+                else:
+                    p_correct = 0.75 - 1.5 * (t - 0.6)
+                    p_correct = max(p_correct, 0.05)
+            else:
+                # Random mode: noisy sigmoidal rise
+                base = 0.1 + 0.6 / (1 + _math.exp(-8 * (t - 0.5)))
+                noise = (self._rng.random() - 0.5) * 0.1
+                p_correct = max(0.01, min(0.99, base + noise))
+
+            # Build logprobs for all target tokens
+            remaining = 1.0 - p_correct
+            n_other = max(len(target_tokens) - 1, 1)
+            entry_logprobs = {}
+            for tok in target_tokens:
+                if tok == correct_token:
+                    p = max(p_correct, 1e-10)
+                else:
+                    p = max(remaining / n_other, 1e-10)
+                entry_logprobs[tok] = _math.log(p)
+
+            # Psych scores: synthetic category-specific patterns
+            psych_scores = {}
+            if psych_token_map:
+                for cat in psych_token_map:
+                    if cat == "hedging":
+                        # Hedging peaks in middle layers, drops at end
+                        psych_scores[cat] = 0.02 + 0.08 * _math.sin(t * _math.pi)
+                    elif cat == "confidence":
+                        # Confidence rises with layers
+                        psych_scores[cat] = 0.01 + 0.05 * t
+                    elif cat == "epistemic_uncertain":
+                        # Uncertainty inversely tracks p_correct
+                        psych_scores[cat] = 0.03 * (1.0 - p_correct)
+                    elif cat == "epistemic_certain":
+                        # Certainty tracks p_correct
+                        psych_scores[cat] = 0.02 * p_correct
+                    elif cat == "negation":
+                        # Negation peaks in early-mid layers
+                        psych_scores[cat] = 0.03 + 0.04 * _math.exp(-2 * (t - 0.3) ** 2)
+                    else:
+                        # Other categories: low baseline with slight variation
+                        psych_scores[cat] = 0.01 + 0.02 * self._rng.random()
+
+            layer_logprobs.append({
+                "layer_idx": layer_idx,
+                "exec_pos": k,
+                "target_logprobs": entry_logprobs,
+                "psych_scores": psych_scores,
+            })
+
+        final_logprobs = {}
+        if layer_logprobs:
+            final_logprobs = dict(layer_logprobs[-1]["target_logprobs"])
+
+        return {
+            "layer_logprobs": layer_logprobs,
+            "final_logprobs": final_logprobs,
+        }
+
     def get_logprobs(self, prompt, target_tokens=None):
         import math as _math
         tokens = target_tokens or [str(i) for i in range(10)]

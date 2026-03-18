@@ -74,6 +74,33 @@ PSYCH_VOCAB = {
         "no", "non", "nein", "не", "нет", "não", "いいえ",
         "hayır", "nie", "nem", "ei",
     ],
+    # --- Function words: structural/syntactic processing signals ---
+    # These track grammatical scaffolding rather than semantic content.
+    # In the brain, function words activate Broca's area (syntax) while
+    # content words activate Wernicke's area (semantics). Tracking these
+    # per-layer reveals where the model builds syntactic structure.
+    "articles": [
+        "the", "a", "an",
+    ],
+    "conjunctions": [
+        "and", "but", "or", "nor", "yet", "so", "for",
+    ],
+    "prepositions": [
+        "in", "on", "at", "to", "from", "with", "by", "of",
+        "into", "through", "between", "among", "under", "over",
+    ],
+    "auxiliaries": [
+        "is", "are", "was", "were", "be", "been", "being",
+        "has", "have", "had", "do", "does", "did",
+    ],
+    "modals": [
+        "will", "would", "could", "should", "can", "may",
+        "might", "shall", "must",
+    ],
+    "quantifiers": [
+        "some", "any", "many", "much", "few", "several",
+        "most", "each", "both", "either",
+    ],
 }
 
 
@@ -81,14 +108,26 @@ def build_psych_token_map(tokenizer) -> dict:
     """Build mapping from psych categories to token IDs.
 
     Tries both bare word and space-prefixed variant for each word.
-    Returns {"categories": {name: [token_ids]}, "multi_token_words": set}.
+    Returns:
+        {
+            "categories": {name: [first_token_ids]},  # backward compat
+            "token_sequences": {name: {word: [all_token_ids]}},
+            "multi_token_words": set,
+        }
+
+    For multi-token words, token_sequences stores the full subword token
+    list so that score_psych_vocab_from_logits can compute a geometric mean
+    across all subword probabilities instead of using only the first token.
     """
     categories = {}
+    token_sequences = {}
     multi_token_words = set()
 
     for cat_name, words in PSYCH_VOCAB.items():
         token_ids = set()
+        cat_sequences = {}
         for word in words:
+            best_ids = None
             for variant in [word, f" {word}", word.lower(), f" {word.lower()}"]:
                 try:
                     encoded = tokenizer.encode(variant, add_bos=False)
@@ -102,17 +141,26 @@ def build_psych_token_map(tokenizer) -> dict:
                     else:
                         continue
 
-                    if len(ids) == 1:
-                        token_ids.add(ids[0])
-                    elif len(ids) > 1:
-                        multi_token_words.add(word)
-                        token_ids.add(ids[0])  # first token still carries signal
+                    if ids:
+                        if best_ids is None or len(ids) < len(best_ids):
+                            best_ids = ids  # prefer shortest tokenization
                 except Exception:
                     continue
 
-        categories[cat_name] = sorted(token_ids)
+            if best_ids:
+                token_ids.add(best_ids[0])  # first token for backward compat
+                if len(best_ids) > 1:
+                    multi_token_words.add(word)
+                cat_sequences[word] = best_ids
 
-    return {"categories": categories, "multi_token_words": multi_token_words}
+        categories[cat_name] = sorted(token_ids)
+        token_sequences[cat_name] = cat_sequences
+
+    return {
+        "categories": categories,
+        "token_sequences": token_sequences,
+        "multi_token_words": multi_token_words,
+    }
 
 
 def score_psych_vocab(log_probs_dict: dict, token_map: dict) -> dict:
@@ -135,6 +183,12 @@ def score_psych_vocab_from_logits(logits_tensor, token_map: dict) -> dict:
     Takes the full vocabulary logit tensor and computes probability mass
     per category. Fast — single softmax + index gather.
 
+    For multi-token words, uses geometric mean of subword probabilities
+    (= exp(mean(log_probs))) instead of only the first token probability.
+    This gives the "independent marginal" probability — not the true
+    conditional p(t2|t1), but the best approximation from a single forward
+    pass's full vocab logits.
+
     Args:
         logits_tensor: (vocab_size,) float tensor of logits
         token_map: output of build_psych_token_map
@@ -145,20 +199,39 @@ def score_psych_vocab_from_logits(logits_tensor, token_map: dict) -> dict:
     import torch
 
     probs = torch.softmax(logits_tensor.float(), dim=-1)
-    categories = token_map["categories"]
+    log_probs = torch.log_softmax(logits_tensor.float(), dim=-1)
+    token_sequences = token_map.get("token_sequences", {})
 
     scores = {}
-    for cat_name, token_ids in categories.items():
-        if not token_ids:
-            scores[cat_name] = 0.0
-            continue
-        # Gather probabilities for this category's tokens
-        ids_tensor = torch.tensor(token_ids, device=probs.device, dtype=torch.long)
-        # Filter out any IDs beyond vocab size
-        valid = ids_tensor[ids_tensor < probs.shape[0]]
-        if valid.numel() == 0:
-            scores[cat_name] = 0.0
-        else:
-            scores[cat_name] = probs[valid].sum().item()
+
+    if token_sequences:
+        # New path: use full token sequences for proper multi-token scoring
+        for cat_name, sequences in token_sequences.items():
+            cat_mass = 0.0
+            for word, ids in sequences.items():
+                valid_ids = [i for i in ids if i < probs.shape[0]]
+                if not valid_ids:
+                    continue
+                if len(valid_ids) == 1:
+                    # Single-token word: use probability directly
+                    cat_mass += probs[valid_ids[0]].item()
+                else:
+                    # Multi-token word: geometric mean of subword probs
+                    mean_lp = sum(log_probs[i].item() for i in valid_ids) / len(valid_ids)
+                    cat_mass += math.exp(mean_lp)
+            scores[cat_name] = cat_mass
+    else:
+        # Fallback for old-format token_maps without token_sequences
+        categories = token_map.get("categories", {})
+        for cat_name, token_ids in categories.items():
+            if not token_ids:
+                scores[cat_name] = 0.0
+                continue
+            ids_tensor = torch.tensor(token_ids, device=probs.device, dtype=torch.long)
+            valid = ids_tensor[ids_tensor < probs.shape[0]]
+            if valid.numel() == 0:
+                scores[cat_name] = 0.0
+            else:
+                scores[cat_name] = probs[valid].sum().item()
 
     return scores

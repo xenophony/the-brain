@@ -693,6 +693,133 @@ class ExLlamaV2LayerAdapter:
         return results
 
     # ------------------------------------------------------------------ #
+    #  Layerwise logprobs                                                  #
+    # ------------------------------------------------------------------ #
+
+    def get_layerwise_logprobs(self, prompt: str, target_tokens: list[str],
+                               layer_path: list[int] | None = None,
+                               psych_token_map: dict | None = None
+                               ) -> dict:
+        """Forward pass capturing per-layer logprobs for target tokens and psych vocab.
+
+        Uses forward_with_hooks to capture hidden states, then projects
+        all layers through norm+lm_head for per-layer vocab probabilities.
+
+        Args:
+            prompt: Input prompt string.
+            target_tokens: List of answer choice strings to measure.
+            layer_path: Optional custom layer execution path.
+            psych_token_map: Optional dict of {category: [word, ...]} for
+                psycholinguistic signal capture.
+
+        Returns:
+            {
+                "layer_logprobs": [
+                    {"layer_idx": int, "exec_pos": int,
+                     "target_logprobs": {token_str: float, ...},
+                     "psych_scores": {category: float, ...}},
+                    ...
+                ],
+                "final_logprobs": {token_str: float, ...},
+            }
+        """
+        if layer_path is None:
+            layer_path = self._layer_path or list(range(self.num_layers))
+
+        # Pre-resolve target token IDs
+        target_ids = {}
+        for tok_str in target_tokens:
+            tok_enc = self._encode(tok_str, add_bos=False)
+            if tok_enc.shape[-1] >= 1:
+                target_ids[tok_str] = tok_enc[0, 0].item()
+
+        # Pre-resolve psych token IDs if provided
+        psych_cat_ids = {}  # {category: {word: token_id}}
+        if psych_token_map:
+            for cat, words in psych_token_map.items():
+                cat_ids = {}
+                for word in words:
+                    for variant in [word, f" {word}", word.lower(), f" {word.lower()}"]:
+                        tok_enc = self._encode(variant, add_bos=False)
+                        if tok_enc.shape[-1] >= 1:
+                            cat_ids[word] = tok_enc[0, 0].item()
+                            break
+                if cat_ids:
+                    psych_cat_ids[cat] = cat_ids
+
+        # Collect hidden states via hooks
+        hidden_states = []  # [(exec_pos, layer_idx, hidden_tensor), ...]
+
+        def hook_fn(exec_pos, layer_idx, hidden):
+            hidden_states.append((exec_pos, layer_idx, hidden))
+
+        with torch.inference_mode():
+            self.forward_with_hooks(prompt, hook_fn, layer_path)
+
+        # Project each hidden state through post_modules to get logits.
+        # We process sequentially because ExLlamaV2 post_modules (RMSNorm +
+        # lm_head) may have specific shape/device expectations that make
+        # batching risky. For targeted analysis (not 1457-config sweeps),
+        # sequential is acceptable.
+        from exllamav2.attn import ExLlamaV2Attention
+
+        layer_logprobs = []
+        for exec_pos, layer_idx, hidden in hidden_states:
+            if exec_pos == -1:
+                # Pre-layer embedding state — skip (too early for meaningful projection)
+                continue
+
+            h = hidden
+            if h.dim() == 2:
+                h = h.unsqueeze(0)
+
+            # Take last token position only
+            h_last = h[:, -1:, :]
+
+            batch_size, seq_len = h_last.shape[0], h_last.shape[1]
+            attn_params = ExLlamaV2Attention.Params(batch_size, seq_len, 0)
+
+            x = h_last
+            for module in self._post_modules:
+                x = self._run_module(module, x, None, attn_params, 0)
+
+            logits = x[0, -1, :].float()
+            log_probs = torch.log_softmax(logits, dim=-1)
+
+            # Extract target token logprobs
+            entry_logprobs = {}
+            for tok_str, tid in target_ids.items():
+                entry_logprobs[tok_str] = log_probs[tid].item()
+
+            # Extract psych scores
+            psych_scores = {}
+            if psych_cat_ids:
+                probs = torch.softmax(logits, dim=-1)
+                for cat, word_ids in psych_cat_ids.items():
+                    cat_mass = 0.0
+                    for word, tid in word_ids.items():
+                        if tid < probs.shape[0]:
+                            cat_mass += probs[tid].item()
+                    psych_scores[cat] = cat_mass
+
+            layer_logprobs.append({
+                "layer_idx": layer_idx,
+                "exec_pos": exec_pos,
+                "target_logprobs": entry_logprobs,
+                "psych_scores": psych_scores,
+            })
+
+        # Final logprobs = last entry (for compat with get_logprobs)
+        final_logprobs = {}
+        if layer_logprobs:
+            final_logprobs = dict(layer_logprobs[-1]["target_logprobs"])
+
+        return {
+            "layer_logprobs": layer_logprobs,
+            "final_logprobs": final_logprobs,
+        }
+
+    # ------------------------------------------------------------------ #
     #  Residual stream tracing                                             #
     # ------------------------------------------------------------------ #
 
