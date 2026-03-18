@@ -61,6 +61,8 @@ def main():
                         help="Run each path N times and average (reduces noise)")
     parser.add_argument("--regions", nargs="+", default=None,
                         help="Circuit regions as i-j pairs, e.g. --regions 1-3 27-28 44-48")
+    parser.add_argument("--skip-regions", nargs="+", default=None,
+                        help="Regions to SKIP (remove), e.g. --skip-regions 5-10 8-12")
     args = parser.parse_args()
 
     # Load model
@@ -97,16 +99,35 @@ def main():
 
     print(f"Regions: {list(regions.keys())}")
 
+    # Parse skip regions
+    skip_regions_map = {}
+    if args.skip_regions:
+        for r in args.skip_regions:
+            parts = r.split("-")
+            i, j = int(parts[0]), int(parts[1])
+            skip_regions_map[r] = (i, j)
+        print(f"Skip regions: {list(skip_regions_map.keys())}")
+
     # Build all combinations
     from itertools import combinations
     paths = [("baseline", normal_path, [], [])]
 
+    # Duplicate region combinations
     region_names = sorted(regions.keys())
     for r in range(1, len(region_names) + 1):
         for combo in combinations(region_names, r):
             label = "dup " + " + ".join(combo)
             dup_regions = [regions[c] for c in combo]
             paths.append((label, None, [], dup_regions))
+
+    # Skip region paths (each individually, then all combined)
+    if skip_regions_map:
+        skip_names = sorted(skip_regions_map.keys())
+        for r in range(1, len(skip_names) + 1):
+            for combo in combinations(skip_names, r):
+                label = "skip " + " + ".join(combo)
+                sr = [skip_regions_map[c] for c in combo]
+                paths.append((label, None, sr, []))
 
     results = []
     for label, explicit_path, skip_regions, dup_regions in paths:
