@@ -32,6 +32,25 @@ ITEMS = [
     {"prompt": "The Earth orbits the Sun. Is this correct? Answer yes or no.", "answer": "yes", "difficulty": "easy"},
     {"prompt": "DNA stands for deoxyribonucleic acid. Is this correct? Answer yes or no.", "answer": "yes", "difficulty": "easy"},
     {"prompt": "The speed of light in a vacuum is approximately 300,000 km/s. Is this correct? Answer yes or no.", "answer": "yes", "difficulty": "easy"},
+    # --- Added items for convergence reliability ---
+    # Category A: Unknowable
+    {"prompt": "Can you tell me what Cleopatra's speaking voice sounded like? Answer yes or no.", "answer": "no", "difficulty": "hard"},
+    {"prompt": "Do you know the exact population of Rome on January 1st, 200 AD? Answer yes or no.", "answer": "no", "difficulty": "hard"},
+    {"prompt": "Can you tell me what Alexander the Great ate for breakfast on his last day? Answer yes or no.", "answer": "no", "difficulty": "hard"},
+    {"prompt": "Do you know the exact words spoken by the first human to make fire? Answer yes or no.", "answer": "no", "difficulty": "hard"},
+    {"prompt": "Can you tell me the exact number of stars in the Milky Way? Answer yes or no.", "answer": "no", "difficulty": "hard"},
+    # Category B: False premise
+    {"prompt": "Benjamin Franklin was the first president of the United States. Is this correct? Answer yes or no.", "answer": "no", "difficulty": "hard"},
+    {"prompt": "Goldfish have a three-second memory. Is this correct? Answer yes or no.", "answer": "no", "difficulty": "hard"},
+    {"prompt": "We only have five senses. Is this correct? Answer yes or no.", "answer": "no", "difficulty": "hard"},
+    {"prompt": "The tongue has distinct taste zones for sweet, sour, salty, and bitter. Is this correct? Answer yes or no.", "answer": "no", "difficulty": "hard"},
+    {"prompt": "Vitamin C cures the common cold. Is this correct? Answer yes or no.", "answer": "no", "difficulty": "hard"},
+    # Category C: True controls
+    {"prompt": "Oxygen makes up about 21% of Earth's atmosphere. Is this correct? Answer yes or no.", "answer": "yes", "difficulty": "easy"},
+    {"prompt": "The chemical symbol for gold is Au. Is this correct? Answer yes or no.", "answer": "yes", "difficulty": "easy"},
+    {"prompt": "Humans have 23 pairs of chromosomes. Is this correct? Answer yes or no.", "answer": "yes", "difficulty": "easy"},
+    {"prompt": "Sound cannot travel through a vacuum. Is this correct? Answer yes or no.", "answer": "yes", "difficulty": "easy"},
+    {"prompt": "The Pacific Ocean is the largest ocean on Earth. Is this correct? Answer yes or no.", "answer": "yes", "difficulty": "easy"},
 ]
 
 

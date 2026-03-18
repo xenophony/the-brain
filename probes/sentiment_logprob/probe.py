@@ -26,6 +26,31 @@ ITEMS = [
     {"prompt": "Is this positive or negative: 'Sure, because what I really needed was more work.'", "answer": "negative", "difficulty": "hard"},
     {"prompt": "Is this positive or negative: 'The surgery was successful but recovery will be long.'", "answer": "positive", "difficulty": "hard"},
     {"prompt": "Is this positive or negative: 'At least it can't get any worse.'", "answer": "negative", "difficulty": "hard"},
+    # --- Added items for convergence reliability ---
+    # Easy
+    {"prompt": "Is this positive or negative: 'This is the best meal I've ever had!'", "answer": "positive", "difficulty": "easy"},
+    {"prompt": "Is this positive or negative: 'I'm so disappointed with the service.'", "answer": "negative", "difficulty": "easy"},
+    {"prompt": "Is this positive or negative: 'My family makes me so happy.'", "answer": "positive", "difficulty": "easy"},
+    {"prompt": "Is this positive or negative: 'This movie was a complete waste of time.'", "answer": "negative", "difficulty": "easy"},
+    {"prompt": "Is this positive or negative: 'I got promoted today!'", "answer": "positive", "difficulty": "easy"},
+    {"prompt": "Is this positive or negative: 'The food was cold and tasteless.'", "answer": "negative", "difficulty": "easy"},
+    {"prompt": "Is this positive or negative: 'What an amazing concert!'", "answer": "positive", "difficulty": "easy"},
+    {"prompt": "Is this positive or negative: 'I regret buying this product.'", "answer": "negative", "difficulty": "easy"},
+    {"prompt": "Is this positive or negative: 'The sunset was breathtaking.'", "answer": "positive", "difficulty": "easy"},
+    {"prompt": "Is this positive or negative: 'The hotel room was filthy and overpriced.'", "answer": "negative", "difficulty": "easy"},
+    {"prompt": "Is this positive or negative: 'I'm thrilled with the results.'", "answer": "positive", "difficulty": "easy"},
+    {"prompt": "Is this positive or negative: 'This is an absolute disaster.'", "answer": "negative", "difficulty": "easy"},
+    # Hard
+    {"prompt": "Is this positive or negative: 'The movie was not without its merits.'", "answer": "positive", "difficulty": "hard"},
+    {"prompt": "Is this positive or negative: 'Thanks a lot for ruining my evening.'", "answer": "negative", "difficulty": "hard"},
+    {"prompt": "Is this positive or negative: 'Could this day get any better?' (said genuinely after good news)", "answer": "positive", "difficulty": "hard"},
+    {"prompt": "Is this positive or negative: 'It was a bittersweet victory — we won but lost our best player.'", "answer": "negative", "difficulty": "hard"},
+    {"prompt": "Is this positive or negative: 'He's not the worst speaker I've heard.'", "answer": "positive", "difficulty": "hard"},
+    {"prompt": "Is this positive or negative: 'Wow, you really outdid yourself this time.' (said after a mistake)", "answer": "negative", "difficulty": "hard"},
+    {"prompt": "Is this positive or negative: 'Despite the setbacks, we managed to finish on time.'", "answer": "positive", "difficulty": "hard"},
+    {"prompt": "Is this positive or negative: 'The customer service was impeccable, as always.' (from a loyal customer)", "answer": "positive", "difficulty": "hard"},
+    {"prompt": "Is this positive or negative: 'I suppose it could have been worse.'", "answer": "negative", "difficulty": "hard"},
+    {"prompt": "Is this positive or negative: 'The presentation was adequate but uninspiring.'", "answer": "negative", "difficulty": "hard"},
 ]
 
 

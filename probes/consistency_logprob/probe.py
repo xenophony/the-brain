@@ -35,6 +35,29 @@ ITEMS = [
     # Hard: wrong claims with plausible-looking wrong answers
     {"prompt": "Flipping a fair coin 3 times gives 6 possible outcomes. Is this correct?", "answer": "no", "difficulty": "hard"},
     {"prompt": "The interior angles of a hexagon sum to 600 degrees. Is this correct?", "answer": "no", "difficulty": "hard"},
+    # --- Added items for convergence reliability ---
+    # Easy: correct claims
+    {"prompt": "A rectangle with sides 5 and 3 has an area of 15. Is this correct?", "answer": "yes", "difficulty": "easy"},
+    {"prompt": "Half of 80 is 40. Is this correct?", "answer": "yes", "difficulty": "easy"},
+    {"prompt": "If a car travels 60 mph for 2 hours, it covers 120 miles. Is this correct?", "answer": "yes", "difficulty": "easy"},
+    {"prompt": "A dozen eggs is 12. Is this correct?", "answer": "yes", "difficulty": "easy"},
+    {"prompt": "25% of 200 is 50. Is this correct?", "answer": "yes", "difficulty": "easy"},
+    # Easy: wrong claims
+    {"prompt": "A rectangle with sides 5 and 3 has an area of 8. Is this correct?", "answer": "no", "difficulty": "easy"},
+    {"prompt": "Half of 80 is 45. Is this correct?", "answer": "no", "difficulty": "easy"},
+    {"prompt": "If a car travels 60 mph for 2 hours, it covers 180 miles. Is this correct?", "answer": "no", "difficulty": "easy"},
+    {"prompt": "A dozen eggs is 10. Is this correct?", "answer": "no", "difficulty": "easy"},
+    {"prompt": "25% of 200 is 75. Is this correct?", "answer": "no", "difficulty": "easy"},
+    # Hard: correct claims
+    {"prompt": "The square root of 144 is 12. Is this correct?", "answer": "yes", "difficulty": "hard"},
+    {"prompt": "If you roll two dice, there are 36 possible outcomes. Is this correct?", "answer": "yes", "difficulty": "hard"},
+    {"prompt": "The sum of the first 10 positive integers is 55. Is this correct?", "answer": "yes", "difficulty": "hard"},
+    {"prompt": "A circle with radius 7 has an area of 49*pi. Is this correct?", "answer": "yes", "difficulty": "hard"},
+    # Hard: wrong claims
+    {"prompt": "The square root of 144 is 14. Is this correct?", "answer": "no", "difficulty": "hard"},
+    {"prompt": "If you roll two dice, there are 12 possible outcomes. Is this correct?", "answer": "no", "difficulty": "hard"},
+    {"prompt": "The sum of the first 10 positive integers is 50. Is this correct?", "answer": "no", "difficulty": "hard"},
+    {"prompt": "A circle with radius 7 has an area of 14*pi. Is this correct?", "answer": "no", "difficulty": "hard"},
 ]
 
 

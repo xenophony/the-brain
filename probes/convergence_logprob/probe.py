@@ -47,6 +47,15 @@ ITEMS = [
     # Harder
     {"prompt": "Inside", "answer": "the", "difficulty": "hard", "category": "articles"},
     {"prompt": "Once upon", "answer": "a", "difficulty": "hard", "category": "articles"},
+    # Added
+    {"prompt": "Open", "answer": "the", "difficulty": "easy", "category": "articles"},
+    {"prompt": "I saw", "answer": "a", "difficulty": "easy", "category": "articles"},
+    {"prompt": "Close", "answer": "the", "difficulty": "easy", "category": "articles"},
+    {"prompt": "There is", "answer": "a", "difficulty": "easy", "category": "articles"},
+    {"prompt": "Under", "answer": "the", "difficulty": "hard", "category": "articles"},
+    {"prompt": "It was", "answer": "a", "difficulty": "hard", "category": "articles"},
+    {"prompt": "Behind", "answer": "the", "difficulty": "hard", "category": "articles"},
+    {"prompt": "What", "answer": "a", "difficulty": "hard", "category": "articles"},
 
     # --- Conjunctions ---
     {"prompt": "bread", "answer": "and", "difficulty": "easy", "category": "conjunctions"},
@@ -58,6 +67,15 @@ ITEMS = [
     {"prompt": "I wanted to go", "answer": "but", "difficulty": "hard", "category": "conjunctions"},
     {"prompt": "It looked easy", "answer": "but", "difficulty": "hard", "category": "conjunctions"},
     {"prompt": "yes", "answer": "or", "difficulty": "hard", "category": "conjunctions"},
+    # Added
+    {"prompt": "peanut butter", "answer": "and", "difficulty": "easy", "category": "conjunctions"},
+    {"prompt": "boys", "answer": "and", "difficulty": "easy", "category": "conjunctions"},
+    {"prompt": "left", "answer": "and", "difficulty": "easy", "category": "conjunctions"},
+    {"prompt": "rock", "answer": "and", "difficulty": "easy", "category": "conjunctions"},
+    {"prompt": "She was tired", "answer": "but", "difficulty": "hard", "category": "conjunctions"},
+    {"prompt": "The plan seemed perfect", "answer": "but", "difficulty": "hard", "category": "conjunctions"},
+    {"prompt": "now", "answer": "or", "difficulty": "hard", "category": "conjunctions"},
+    {"prompt": "He ran fast", "answer": "but", "difficulty": "hard", "category": "conjunctions"},
 
     # --- Prepositions ---
     {"prompt": "The cat sat", "answer": "on", "difficulty": "easy", "category": "prepositions"},
@@ -69,6 +87,15 @@ ITEMS = [
     {"prompt": "She walked", "answer": "through", "difficulty": "hard", "category": "prepositions"},
     {"prompt": "Shared", "answer": "between", "difficulty": "hard", "category": "prepositions"},
     {"prompt": "He hid", "answer": "under", "difficulty": "hard", "category": "prepositions"},
+    # Added
+    {"prompt": "Born", "answer": "in", "difficulty": "easy", "category": "prepositions"},
+    {"prompt": "Point", "answer": "of", "difficulty": "easy", "category": "prepositions"},
+    {"prompt": "Listen", "answer": "to", "difficulty": "easy", "category": "prepositions"},
+    {"prompt": "Put it", "answer": "on", "difficulty": "easy", "category": "prepositions"},
+    {"prompt": "Sent", "answer": "by", "difficulty": "hard", "category": "prepositions"},
+    {"prompt": "Jumped", "answer": "over", "difficulty": "hard", "category": "prepositions"},
+    {"prompt": "Fell", "answer": "into", "difficulty": "hard", "category": "prepositions"},
+    {"prompt": "Chosen", "answer": "from", "difficulty": "hard", "category": "prepositions"},
 
     # --- Auxiliaries ---
     {"prompt": "She", "answer": "is", "difficulty": "easy", "category": "auxiliaries"},
@@ -80,6 +107,15 @@ ITEMS = [
     {"prompt": "All the evidence", "answer": "has", "difficulty": "hard", "category": "auxiliaries"},
     {"prompt": "Nothing", "answer": "has", "difficulty": "hard", "category": "auxiliaries"},
     {"prompt": "The work", "answer": "has", "difficulty": "hard", "category": "auxiliaries"},
+    # Added
+    {"prompt": "We", "answer": "are", "difficulty": "easy", "category": "auxiliaries"},
+    {"prompt": "I", "answer": "was", "difficulty": "easy", "category": "auxiliaries"},
+    {"prompt": "You", "answer": "are", "difficulty": "easy", "category": "auxiliaries"},
+    {"prompt": "The dog", "answer": "is", "difficulty": "easy", "category": "auxiliaries"},
+    {"prompt": "The children", "answer": "were", "difficulty": "hard", "category": "auxiliaries"},
+    {"prompt": "Everyone", "answer": "has", "difficulty": "hard", "category": "auxiliaries"},
+    {"prompt": "The doors", "answer": "were", "difficulty": "hard", "category": "auxiliaries"},
+    {"prompt": "My patience", "answer": "has", "difficulty": "hard", "category": "auxiliaries"},
 
     # --- Modals ---
     {"prompt": "You", "answer": "can", "difficulty": "easy", "category": "modals"},
@@ -91,6 +127,15 @@ ITEMS = [
     {"prompt": "The suspect", "answer": "may", "difficulty": "hard", "category": "modals"},
     {"prompt": "Under no circumstances", "answer": "shall", "difficulty": "hard", "category": "modals"},
     {"prompt": "Given the evidence, it", "answer": "could", "difficulty": "hard", "category": "modals"},
+    # Added
+    {"prompt": "I", "answer": "can", "difficulty": "easy", "category": "modals"},
+    {"prompt": "She", "answer": "would", "difficulty": "easy", "category": "modals"},
+    {"prompt": "They", "answer": "will", "difficulty": "easy", "category": "modals"},
+    {"prompt": "He", "answer": "could", "difficulty": "easy", "category": "modals"},
+    {"prompt": "Visitors", "answer": "must", "difficulty": "hard", "category": "modals"},
+    {"prompt": "The defendant", "answer": "may", "difficulty": "hard", "category": "modals"},
+    {"prompt": "Students", "answer": "should", "difficulty": "hard", "category": "modals"},
+    {"prompt": "One", "answer": "must", "difficulty": "hard", "category": "modals"},
 
     # --- Quantifiers ---
     {"prompt": "There are", "answer": "some", "difficulty": "easy", "category": "quantifiers"},
@@ -102,6 +147,15 @@ ITEMS = [
     {"prompt": "On", "answer": "both", "difficulty": "hard", "category": "quantifiers"},
     {"prompt": "Without", "answer": "any", "difficulty": "hard", "category": "quantifiers"},
     {"prompt": "Not", "answer": "many", "difficulty": "hard", "category": "quantifiers"},
+    # Added
+    {"prompt": "I have", "answer": "some", "difficulty": "easy", "category": "quantifiers"},
+    {"prompt": "Too", "answer": "many", "difficulty": "easy", "category": "quantifiers"},
+    {"prompt": "So", "answer": "many", "difficulty": "easy", "category": "quantifiers"},
+    {"prompt": "Is there", "answer": "any", "difficulty": "easy", "category": "quantifiers"},
+    {"prompt": "Quite a", "answer": "few", "difficulty": "hard", "category": "quantifiers"},
+    {"prompt": "For", "answer": "each", "difficulty": "hard", "category": "quantifiers"},
+    {"prompt": "In", "answer": "some", "difficulty": "hard", "category": "quantifiers"},
+    {"prompt": "Hardly", "answer": "any", "difficulty": "hard", "category": "quantifiers"},
 ]
 
 # All choices merged — needed for cross-probe batching in the sweep runner.

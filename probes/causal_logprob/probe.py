@@ -25,6 +25,31 @@ ITEMS = [
     {"prompt": "Hot water freezes faster than cold water under certain conditions. True or false?", "answer": "yes", "difficulty": "hard"},
     {"prompt": "If you spin a coin that lands heads 10 times in a row, is the next flip more likely heads?", "answer": "no", "difficulty": "hard"},
     {"prompt": "Lightning never strikes the same place twice. True or false?", "answer": "no", "difficulty": "hard"},
+    # --- Added items for convergence reliability ---
+    # Easy
+    {"prompt": "You put a wet towel in the freezer. Will it freeze?", "answer": "yes", "difficulty": "easy"},
+    {"prompt": "You leave a bicycle in the rain for months. Will it rust?", "answer": "yes", "difficulty": "easy"},
+    {"prompt": "You hold a magnet near iron filings. Will they be attracted?", "answer": "yes", "difficulty": "easy"},
+    {"prompt": "A candle is lit in a sealed jar. Will it eventually go out?", "answer": "yes", "difficulty": "easy"},
+    {"prompt": "You mix baking soda and vinegar. Will there be a chemical reaction?", "answer": "yes", "difficulty": "easy"},
+    {"prompt": "A car with no fuel can still drive normally. True or false?", "answer": "no", "difficulty": "easy"},
+    {"prompt": "You touch a hot stove. Will it burn your hand?", "answer": "yes", "difficulty": "easy"},
+    {"prompt": "An egg dropped from a table onto a tile floor will likely survive intact. True or false?", "answer": "no", "difficulty": "easy"},
+    {"prompt": "Pouring water on a grease fire will safely extinguish it. True or false?", "answer": "no", "difficulty": "easy"},
+    {"prompt": "Leaving bread out for a week will cause it to grow mold. True or false?", "answer": "yes", "difficulty": "easy"},
+    # Hard
+    {"prompt": "Glass is a liquid that flows very slowly over centuries. True or false?", "answer": "no", "difficulty": "hard"},
+    {"prompt": "Cutting an onion underwater prevents you from crying. True or false?", "answer": "yes", "difficulty": "hard"},
+    {"prompt": "A compass needle points to geographic north. True or false?", "answer": "no", "difficulty": "hard"},
+    {"prompt": "Diamonds can be burned if heated enough in oxygen. True or false?", "answer": "yes", "difficulty": "hard"},
+    {"prompt": "A penny dropped from the Empire State Building can kill a person. True or false?", "answer": "no", "difficulty": "hard"},
+    {"prompt": "Antibiotics are effective against viral infections. True or false?", "answer": "no", "difficulty": "hard"},
+    {"prompt": "Bananas are naturally radioactive. True or false?", "answer": "yes", "difficulty": "hard"},
+    {"prompt": "The vacuum of space is completely empty with nothing in it. True or false?", "answer": "no", "difficulty": "hard"},
+    {"prompt": "Cooking food always destroys all its nutritional value. True or false?", "answer": "no", "difficulty": "hard"},
+    {"prompt": "If you mix all colors of light together, you get white light. True or false?", "answer": "yes", "difficulty": "hard"},
+    {"prompt": "A helium balloon released outdoors will rise forever. True or false?", "answer": "no", "difficulty": "hard"},
+    {"prompt": "Fresh water and salt water freeze at the same temperature. True or false?", "answer": "no", "difficulty": "hard"},
 ]
 
 

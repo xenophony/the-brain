@@ -43,6 +43,47 @@ HARD_PAIRS = [
         "positive": {"prompt": "All swans are white. True or false? Answer with one word.", "answer": "false"},
         "negated": {"prompt": "Not all swans are white. True or false? Answer with one word.", "answer": "true"},
     },
+    # --- Added pairs for convergence reliability ---
+    {
+        # Double negation with false base
+        "positive": {"prompt": "The Sun revolves around the Earth. True or false? Answer with one word.", "answer": "false"},
+        "negated": {"prompt": "It is not the case that the Sun revolves around the Earth. True or false? Answer with one word.", "answer": "true"},
+    },
+    {
+        # Negated universal
+        "positive": {"prompt": "All metals are solid at room temperature. True or false? Answer with one word.", "answer": "false"},
+        "negated": {"prompt": "Not all metals are solid at room temperature. True or false? Answer with one word.", "answer": "true"},
+    },
+    {
+        # Double negation preserving truth
+        "positive": {"prompt": "Gravity pulls objects toward the Earth. True or false? Answer with one word.", "answer": "true"},
+        "negated": {"prompt": "It is not false that gravity pulls objects toward the Earth. True or false? Answer with one word.", "answer": "true"},
+    },
+    {
+        # Simple negation of true fact
+        "positive": {"prompt": "The Amazon rainforest produces oxygen. True or false? Answer with one word.", "answer": "true"},
+        "negated": {"prompt": "The Amazon rainforest does not produce oxygen. True or false? Answer with one word.", "answer": "false"},
+    },
+    {
+        # Negation of false claim
+        "positive": {"prompt": "Whales are fish. True or false? Answer with one word.", "answer": "false"},
+        "negated": {"prompt": "Whales are not fish. True or false? Answer with one word.", "answer": "true"},
+    },
+    {
+        # Triple negation
+        "positive": {"prompt": "Diamonds are the hardest natural material. True or false? Answer with one word.", "answer": "true"},
+        "negated": {"prompt": "It is not true that diamonds are not the hardest natural material. True or false? Answer with one word.", "answer": "true"},
+    },
+    {
+        # Negated existential
+        "positive": {"prompt": "Some mammals can fly. True or false? Answer with one word.", "answer": "true"},
+        "negated": {"prompt": "No mammals can fly. True or false? Answer with one word.", "answer": "false"},
+    },
+    {
+        # Simple negation of true fact
+        "positive": {"prompt": "Sound travels faster in water than in air. True or false? Answer with one word.", "answer": "true"},
+        "negated": {"prompt": "Sound does not travel faster in water than in air. True or false? Answer with one word.", "answer": "false"},
+    },
 ]
 
 

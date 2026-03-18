@@ -562,6 +562,23 @@ class MockAdapter:
             ("lightning never strikes the same place twice. true", "false"),
             ("not all swans are white", "true"),
             ("all swans are white. true", "false"),
+            # Added pairs
+            ("it is not the case that the sun revolves", "true"),
+            ("the sun revolves around the earth. true", "false"),
+            ("not all metals are solid", "true"),
+            ("all metals are solid at room temperature. true", "false"),
+            ("it is not false that gravity pulls", "true"),
+            ("gravity pulls objects toward the earth. true", "true"),
+            ("the amazon rainforest does not produce oxygen", "false"),
+            ("the amazon rainforest produces oxygen. true", "true"),
+            ("whales are not fish", "true"),
+            ("whales are fish. true", "false"),
+            ("it is not true that diamonds are not the hardest", "true"),
+            ("diamonds are the hardest natural material. true", "true"),
+            ("no mammals can fly", "false"),
+            ("some mammals can fly. true", "true"),
+            ("sound does not travel faster in water", "false"),
+            ("sound travels faster in water than in air. true", "true"),
         ]
         for fragment, answer in negation_map:
             if fragment in p:

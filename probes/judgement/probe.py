@@ -131,6 +131,82 @@ HARD_ITEMS = [
         "answer": "71%",
         "is_correct": False,  # P(B|red) = (4/5)/(2/5+4/5+1/5) = 4/7 ≈ 57%
     },
+    # --- Added items for convergence reliability ---
+    {
+        "question": "What is the square root of 64?",
+        "answer": "8",
+        "is_correct": True,
+    },
+    {
+        "question": "What is the capital of Japan?",
+        "answer": "Beijing",
+        "is_correct": False,  # Tokyo
+    },
+    {
+        "question": "How many sides does a hexagon have?",
+        "answer": "6",
+        "is_correct": True,
+    },
+    {
+        "question": "What is the chemical symbol for sodium?",
+        "answer": "So",
+        "is_correct": False,  # Na
+    },
+    {
+        "question": "If a train travels 90 km in 1.5 hours, what is its speed in km/h?",
+        "answer": "60",
+        "is_correct": True,
+    },
+    {
+        "question": "What is 3^4?",
+        "answer": "64",
+        "is_correct": False,  # 81
+    },
+    {
+        "question": "How many vertices does a cube have?",
+        "answer": "8",
+        "is_correct": True,
+    },
+    {
+        "question": "What planet is known as the Red Planet?",
+        "answer": "Jupiter",
+        "is_correct": False,  # Mars
+    },
+    {
+        "question": "What is the derivative of x^3?",
+        "answer": "3x^2",
+        "is_correct": True,
+    },
+    {
+        "question": "A recipe calls for doubling 3/4 cup. How much is that?",
+        "answer": "1 and 1/4 cups",
+        "is_correct": False,  # 1 and 1/2 cups
+    },
+    {
+        "question": "What is 17 * 6?",
+        "answer": "102",
+        "is_correct": True,
+    },
+    {
+        "question": "Who wrote Romeo and Juliet?",
+        "answer": "Charles Dickens",
+        "is_correct": False,  # Shakespeare
+    },
+    {
+        "question": "What is the sum of angles in a triangle?",
+        "answer": "180 degrees",
+        "is_correct": True,
+    },
+    {
+        "question": "In what year did World War I end?",
+        "answer": "1917",
+        "is_correct": False,  # 1918
+    },
+    {
+        "question": "What is the value of the golden ratio (to 3 decimal places)?",
+        "answer": "1.618",
+        "is_correct": True,
+    },
 ]
 
 

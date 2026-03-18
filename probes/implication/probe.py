@@ -129,6 +129,107 @@ HARD_ITEMS = [
         ),
         "answer": "invalid",  # denying the antecedent
     },
+    # --- Added items for convergence reliability ---
+    {
+        # Valid: hypothetical syllogism
+        "prompt": (
+            "Premise 1: If it rains, the streets get wet. "
+            "Premise 2: If the streets get wet, cars skid. "
+            "Conclusion: If it rains, cars skid. "
+            "Is this argument valid or invalid? Answer with one word."
+        ),
+        "answer": "valid",
+    },
+    {
+        # Invalid: affirming the consequent
+        "prompt": (
+            "Premise 1: All teachers have degrees. "
+            "Premise 2: Maria has a degree. "
+            "Conclusion: Maria is a teacher. "
+            "Is this argument valid or invalid? Answer with one word."
+        ),
+        "answer": "invalid",
+    },
+    {
+        # Valid: disjunctive syllogism
+        "prompt": (
+            "Premise 1: Either the butler or the maid committed the crime. "
+            "Premise 2: The butler did not commit the crime. "
+            "Conclusion: The maid committed the crime. "
+            "Is this argument valid or invalid? Answer with one word."
+        ),
+        "answer": "valid",
+    },
+    {
+        # Invalid: undistributed middle
+        "prompt": (
+            "Premise 1: All politicians make speeches. "
+            "Premise 2: All professors make speeches. "
+            "Conclusion: All politicians are professors. "
+            "Is this argument valid or invalid? Answer with one word."
+        ),
+        "answer": "invalid",
+    },
+    {
+        # Valid with absurd content (belief bias test)
+        "prompt": (
+            "Premise 1: All unicorns can fly. "
+            "Premise 2: Sparkle is a unicorn. "
+            "Conclusion: Sparkle can fly. "
+            "Is this argument valid or invalid? Answer with one word."
+        ),
+        "answer": "valid",
+    },
+    {
+        # Invalid: converse error
+        "prompt": (
+            "Premise 1: If an animal is a dog, it has four legs. "
+            "Premise 2: This animal has four legs. "
+            "Conclusion: This animal is a dog. "
+            "Is this argument valid or invalid? Answer with one word."
+        ),
+        "answer": "invalid",
+    },
+    {
+        # Valid: modus tollens
+        "prompt": (
+            "Premise 1: If the alarm sounds, there is a fire. "
+            "Premise 2: There is no fire. "
+            "Conclusion: The alarm did not sound. "
+            "Is this argument valid or invalid? Answer with one word."
+        ),
+        "answer": "valid",
+    },
+    {
+        # Invalid: illicit major
+        "prompt": (
+            "Premise 1: All cats are mammals. "
+            "Premise 2: No dogs are cats. "
+            "Conclusion: No dogs are mammals. "
+            "Is this argument valid or invalid? Answer with one word."
+        ),
+        "answer": "invalid",
+    },
+    {
+        # Valid: contrapositive
+        "prompt": (
+            "Premise 1: All prime numbers greater than 2 are odd. "
+            "Premise 2: This number is even and greater than 2. "
+            "Conclusion: This number is not prime. "
+            "Is this argument valid or invalid? Answer with one word."
+        ),
+        "answer": "valid",
+    },
+    {
+        # Invalid: existential fallacy
+        "prompt": (
+            "Premise 1: All dragons breathe fire. "
+            "Premise 2: All fire-breathers are dangerous. "
+            "Conclusion: Some dangerous things are dragons. "
+            "Is this argument valid or invalid? Answer with one word."
+        ),
+        "answer": "invalid",  # no dragons exist, so existential import fails
+    },
 ]
 
 
