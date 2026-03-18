@@ -56,6 +56,11 @@ def main():
         print(f"Error: results directory does not exist: {results_dir}")
         sys.exit(1)
 
+    # Archive previous plots if output dir has PNGs
+    if output_dir.exists() and any(output_dir.glob("*.png")):
+        from scripts.archive_utils import archive_previous_run
+        archive_previous_run(output_dir, file_glob="*.png")
+
     if args.probe:
         # Single probe mode
         probe_file = results_dir / f"{args.probe}.json"
