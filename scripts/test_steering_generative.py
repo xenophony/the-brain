@@ -48,11 +48,11 @@ def run_with_steering(model, probe, steering_vectors, alpha):
     """Run a probe with steering vectors applied via monkey-patch."""
     original_run_module = model._run_module
 
+    _steer_count = [0]
+
     def steered_run_module(module, x, cache, attn_params, past_len):
         result = original_run_module(module, x, cache, attn_params, past_len)
         # Only steer during prefill (seq_len > 1), not during decode steps.
-        # This prevents the vector from compounding over 20+ decode steps
-        # which destroys generation quality.
         seq_len = result.shape[1] if result.dim() == 3 else 1
         if seq_len <= 1:
             return result  # decode step — skip steering
@@ -66,9 +66,11 @@ def run_with_steering(model, probe, steering_vectors, alpha):
                     result[:, -1, :] += sv
                 elif result.dim() == 2:
                     result[-1, :] += sv
+                _steer_count[0] += 1
                 break
         return result
 
+    _steer_count[0] = 0
     model._run_module = steered_run_module
     try:
         probe.log_responses = True
@@ -76,6 +78,7 @@ def run_with_steering(model, probe, steering_vectors, alpha):
     finally:
         model._run_module = original_run_module
 
+    print(f"  [debug] Steering applied {_steer_count[0]} times")
     return result
 
 
