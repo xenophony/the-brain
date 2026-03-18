@@ -35,8 +35,10 @@ def capture_activations(model, probe_name, target_layers, max_items=None):
     from probes.registry import get_probe
     import importlib
 
-    probe = get_probe(probe_name)
+    from probes.registry import BaseLogprobProbe
+    probe_instance = get_probe(probe_name)
     mod = importlib.import_module(f"probes.{probe_name}.probe")
+    is_logprob = isinstance(probe_instance, BaseLogprobProbe)
 
     # Load items — check probe instance for ITEMS (logprob) or module for EASY/HARD
     if hasattr(probe_instance, 'ITEMS') and probe_instance.ITEMS:
@@ -47,13 +49,6 @@ def capture_activations(model, probe_name, target_layers, max_items=None):
         all_items = easy_items + hard_items
     if max_items:
         all_items = all_items[:max_items]
-
-    # Get the prompt function and score function based on probe type
-    # Generation probes: use generate_short + scoring function
-    # Logprob probes: use get_logprobs + argmax check
-    from probes.registry import BaseLogprobProbe
-    probe_instance = get_probe(probe_name)
-    is_logprob = isinstance(probe_instance, BaseLogprobProbe)
 
     if is_logprob:
         choices = probe_instance.CHOICES
