@@ -50,7 +50,8 @@ def main():
     parser.add_argument("--output-dir", type=str, default="results/layerwise/")
     parser.add_argument("--mock", action="store_true",
                         help="Use MockAdapter for testing")
-    parser.add_argument("--max-items", type=int, default=8)
+    parser.add_argument("--max-items", type=int, default=8,
+                        help="Max items per probe (default: 8, 0 = all)")
     parser.add_argument("--compare", type=parse_ij, default=None,
                         help="Compare baseline vs this (i,j) config")
     parser.add_argument("--no-psych", action="store_true",
@@ -125,7 +126,7 @@ def main():
 
     for probe_name in probe_names:
         probe = get_layerwise_probe(probe_name)
-        probe.max_items = args.max_items
+        probe.max_items = args.max_items if args.max_items > 0 else None
         probe.capture_psych = not args.no_psych
 
         print(f"\n--- {probe_name} ---")
@@ -199,7 +200,7 @@ def main():
             if probe_name not in all_results:
                 continue
             probe = get_layerwise_probe(probe_name)
-            probe.max_items = args.max_items
+            probe.max_items = args.max_items if args.max_items > 0 else None
             probe.capture_psych = not args.no_psych
 
             try:
