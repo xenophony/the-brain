@@ -40,7 +40,9 @@ def parse_ij(s: str) -> tuple[int, int]:
 def main():
     parser = argparse.ArgumentParser(
         description="Run layerwise probe analysis for fMRI-style circuit mapping")
-    parser.add_argument("--model", type=str, help="Model path")
+    default_model = str(project_root / "models" / "Qwen3-30B-A3B-exl2")
+    parser.add_argument("--model", type=str, default=default_model,
+                        help="Model path (default: models/Qwen3-30B-A3B-exl2)")
     parser.add_argument("--probes", type=str, default=None,
                         help="Comma-separated probe names (default: all)")
     parser.add_argument("--layer-path", type=parse_ij, default=None,
@@ -58,7 +60,9 @@ def main():
 
     args = parser.parse_args()
 
-    if not args.model and not args.mock:
+    if args.mock:
+        pass  # mock doesn't need model path
+    elif not args.model:
         parser.error("Either --model or --mock is required")
 
     # Load model
