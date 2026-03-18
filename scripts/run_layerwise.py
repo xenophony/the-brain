@@ -104,8 +104,25 @@ def main():
 
     print(f"\nRunning {len(probe_names)} layerwise probes: {probe_names}")
 
-    # Output directory
+    # Output directory — archive previous run if it has results
     output_dir = Path(args.output_dir)
+    if output_dir.exists() and any(output_dir.glob("*.json")):
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        archive_dir = output_dir / "archive" / timestamp
+        archive_dir.mkdir(parents=True, exist_ok=True)
+        moved = 0
+        for f in output_dir.iterdir():
+            if f.is_file():
+                f.rename(archive_dir / f.name)
+                moved += 1
+        # Also archive plots/ if present
+        plots_dir = output_dir / "plots"
+        if plots_dir.exists() and any(plots_dir.iterdir()):
+            archive_plots = archive_dir / "plots"
+            plots_dir.rename(archive_plots)
+        if moved:
+            print(f"Archived {moved} files from previous run → {archive_dir}")
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Build layer path
