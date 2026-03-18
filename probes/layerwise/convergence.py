@@ -1,13 +1,15 @@
 """Layerwise function word convergence probe.
 
 Tracks per-layer convergence speed for articles, conjunctions,
-prepositions, auxiliaries, modals, and quantifiers. Directly
-maps to potential inference savings — early convergence means
-later layers aren't needed for syntactic processing.
+prepositions, auxiliaries, modals, and quantifiers.
+
+Scores each item within its category's choices (not all 50+ words),
+matching the logprob probe's scoring. This prevents cross-category
+dilution of p(correct).
 """
 import math
 from collections import defaultdict
-from probes.convergence_logprob.probe import ConvergenceLogprobProbe, ITEMS, CHOICES
+from probes.convergence_logprob.probe import ITEMS, CHOICES, CATEGORY_CHOICES
 from probes.layerwise_registry import BaseLayerwiseProbe, register_layerwise_probe
 
 
@@ -17,6 +19,61 @@ class ConvergenceLayerwiseProbe(BaseLayerwiseProbe):
     description = "Per-layer function word convergence — syntactic circuit timing"
     ITEMS = ITEMS
     CHOICES = CHOICES
+    max_items = None  # always run all — need all categories
+
+    def run(self, model) -> dict:
+        """Override run to score within category at each layer."""
+        items = self._limit(self.ITEMS)
+        psych_map = self._get_psych_token_map()
+        results = []
+
+        for item in items:
+            prompt = item["prompt"]
+            category = item.get("category", "unknown")
+            cat_choices = CATEGORY_CHOICES.get(category, self.CHOICES)
+            answer = item["answer"].lower()
+
+            layer_data = model.get_layerwise_logprobs(
+                prompt, self.CHOICES, psych_token_map=psych_map)
+
+            layer_scores = []
+            for layer_entry in layer_data["layer_logprobs"]:
+                logprobs = layer_entry["target_logprobs"]
+
+                # Normalize within category choices only
+                probs = {}
+                for c in cat_choices:
+                    lp = logprobs.get(c, float('-inf'))
+                    if lp > -100:
+                        probs[c] = math.exp(lp)
+                total = sum(probs.values())
+                if total > 0:
+                    probs = {k: v / total for k, v in probs.items()}
+                p_correct = probs.get(answer, 0.0)
+
+                entropy = 0.0
+                for p in probs.values():
+                    if p > 1e-10:
+                        entropy -= p * math.log(p)
+
+                layer_scores.append({
+                    "layer_idx": layer_entry["layer_idx"],
+                    "exec_pos": layer_entry["exec_pos"],
+                    "p_correct": p_correct,
+                    "argmax": max(probs, key=probs.get) if probs else "",
+                    "entropy": entropy,
+                    "psych": layer_entry.get("psych_scores", {}),
+                })
+
+            results.append({
+                "prompt": item["prompt"][:100],
+                "answer": answer,
+                "difficulty": item.get("difficulty", "hard"),
+                "category": category,
+                "layers": layer_scores,
+            })
+
+        return self._analyze(results)
 
     def _analyze(self, results):
         """Extend standard analysis with per-category convergence layers."""
@@ -30,11 +87,8 @@ class ConvergenceLayerwiseProbe(BaseLayerwiseProbe):
         # Group items by function word category
         cat_items = defaultdict(list)
         for item_result in results:
-            # Find original item to get category
-            for orig in ITEMS:
-                if orig["prompt"][:40] == item_result["prompt"][:40]:
-                    cat_items[orig.get("category", "unknown")].append(item_result)
-                    break
+            cat = item_result.get("category", "unknown")
+            cat_items[cat].append(item_result)
 
         # Per-category convergence analysis
         cat_convergence = {}
